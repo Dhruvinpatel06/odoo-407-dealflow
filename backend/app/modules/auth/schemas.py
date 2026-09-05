@@ -16,6 +16,16 @@ class LoginRequest(BaseModel):
     password: str = Field(..., min_length=1, description="Plaintext password")
 
 
+class SignupRequest(BaseModel):
+    """Payload for public customer signup."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    name: str = Field(..., min_length=1, max_length=255, description="Full name")
+    email: str = Field(..., min_length=1, max_length=255, description="Email address")
+    password: str = Field(..., min_length=8, description="Password with minimum 8 characters")
+
+
 class TokenResponse(BaseModel):
     """Access token response payload."""
 

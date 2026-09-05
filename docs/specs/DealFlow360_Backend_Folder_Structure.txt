@@ -19,9 +19,9 @@ Confirmed backend architecture:
 - Pydantic
 - SQLAlchemy 2.x
 - Alembic
-- Supabase PostgreSQL
-- Supabase Auth
-- Supabase Realtime
+- PostgreSQL (direct/self-managed)
+- FastAPI-owned manual authentication
+- Realtime not required for core implementation
 - Pytest
 - Modular Monolith
 
@@ -187,9 +187,9 @@ Central application configuration.
 
 Contains:
 - Environment variable loading.
-- Supabase URL/key configuration.
+- Authentication/JWT/cookie configuration.
 - Database URL.
-- JWT-related configuration.
+- JWT, refresh-session, cookie, and CORS-related configuration.
 - CORS settings.
 - Application environment.
 - Other non-business configuration.
@@ -210,7 +210,7 @@ Contains:
 - Transaction/session helpers where required.
 
 Uses:
-- Supabase PostgreSQL through SQLAlchemy.
+- PostgreSQL (direct/self-managed) through SQLAlchemy.
 
 ----------------------------------------------------------------------
 core/security.py
@@ -219,16 +219,17 @@ Purpose:
 Authentication verification utilities.
 
 Contains:
-- Supabase JWT verification.
+- Argon2id password hashing/verification helpers.
+- Access JWT creation and validation.
+- Refresh-token generation/validation helpers.
 - Authenticated user extraction.
-- Token-related security helpers.
+- Token/cookie security helpers.
 
 Important:
-Supabase Auth owns credentials/authentication.
-FastAPI verifies the authenticated identity and handles application
-authorization.
+FastAPI owns authentication credentials and authentication flows.
+`auth_sessions` provides persistent refresh-session state.
 
-Do NOT implement a second password-authentication system here.
+Never store plaintext passwords or raw refresh tokens.
 
 ----------------------------------------------------------------------
 core/dependencies.py
@@ -327,7 +328,7 @@ This file should assemble routers, not implement business logic.
 ======================================================================
 
 Purpose:
-SQLAlchemy 2.x persistence models corresponding to the FINAL 29-table schema.
+SQLAlchemy 2.x persistence models corresponding to the FINAL 30-table schema.
 
 Every finalized database table gets one model file.
 
@@ -440,20 +441,25 @@ auth/
 └── service.py
 
 Purpose:
-Application-level authentication/profile integration around Supabase Auth.
+Application-owned authentication and current-user/session management.
 
 router.py:
+- POST /auth/login
+- POST /auth/refresh
+- POST /auth/logout
 - GET /auth/me
-- POST /auth/refresh-profile
+- POST /auth/change-password
 
 schemas.py:
 - Current-user response schema.
 - Profile refresh request/response schemas if needed.
 
 service.py:
-- Resolve Supabase-authenticated identity to application user.
-- Synchronize application-level profile data.
-- Do not implement password authentication.
+- Verify credentials and create authentication sessions.
+- Issue/rotate/revoke refresh sessions.
+- Resolve the authenticated identity to the application user.
+- Handle password changes.
+- Keep authentication workflows out of route handlers.
 
 ======================================================================
 8. MODULE: users/
@@ -1190,7 +1196,7 @@ env.py:
 
 versions/:
 - Migration files.
-- Initial 29-table schema migration.
+- Initial 30-table schema migration.
 - Later schema changes.
 
 Rule:
@@ -1301,7 +1307,7 @@ Pinned/controlled Python dependencies for:
 - SQLAlchemy
 - Alembic
 - PostgreSQL driver
-- Supabase integration/JWT verification dependencies
+- Password hashing/JWT/authentication dependencies
 - Pytest
 - PDF/XLS export dependencies
 
@@ -1450,7 +1456,7 @@ Do NOT add the following unless a later explicit project decision requires
 them:
 
 - Microservices.
-- Separate authentication service.
+- Separate authentication service or external auth provider.
 - Redis.
 - Kafka.
 - Celery.
@@ -1527,7 +1533,7 @@ PHASE 1 — Infrastructure
 - api/router.py
 
 PHASE 2 — Models + Migration
-- Implement all 29 SQLAlchemy models.
+- Implement all 30 SQLAlchemy models.
 - Configure relationships/constraints.
 - Create Alembic initial migration.
 - Verify database schema.
@@ -1589,7 +1595,7 @@ PHASE 9 — Seed Data + End-to-End Tests
 
 3. Business calculations are backend-authoritative.
 
-4. SQLAlchemy models represent the finalized 29-table schema.
+4. SQLAlchemy models represent the finalized 30-table schema.
 
 5. Repositories handle persistence/query concerns.
 
@@ -1642,7 +1648,7 @@ with:
 
     CORE = authentication, authorization, DB, config, errors
     AUDIT = cross-cutting audit generation
-    REALTIME = Supabase Realtime triggered by persisted state changes
+    REALTIME = optional future capability; not a core dependency
 
 This keeps DealFlow360 simple enough for a 24-hour hackathon while still
 matching the finalized modular-monolith architecture and the quotation ->

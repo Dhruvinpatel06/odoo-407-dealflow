@@ -110,15 +110,16 @@ rules. - Access platform-wide analytics and reporting.
 
 FR-01 AUTHENTICATION AND ACCESS
 
-FR-01.1 Internal users can sign up using standard credentials.
+FR-01.1 Internal users can authenticate using standard credentials provisioned by an authorized administrator.
 
-FR-01.2 Internal users can log in using standard credentials.
+FR-01.2 Internal users can log in using email and password.
 
 FR-01.3 After authentication, internal users can access the backend
 configuration area and sales workspace according to their role.
 
-FR-01.4 Customers can access their quotations through a customer portal
-using either: - Magic link, or - Email and password.
+FR-01.4 Customers can access their quotations through a customer portal using either:
+- Application-managed magic link, or
+- Application-managed email and password.
 
 FR-01.5 The system shall enforce role-appropriate access.
 
@@ -517,8 +518,7 @@ requires confirmation/audit review.
 
 The system shall support the following end-to-end flow:
 
-STEP 1 — Authentication - Sales Rep signs up for the first time or logs
-in.
+STEP 1 — Authentication - Sales Rep uses provisioned credentials to log in.
 
 STEP 2 — Backend Setup - Admin configures: - Products - Price lists -
 Discount tiers - Approval chains - Warehouses - Subscription plans
@@ -647,7 +647,7 @@ analytics - Portal collaboration
 The following eight-step walkthrough is the primary practical acceptance
 test described by the problem statement.
 
-AT-01 Authentication and Setup - Sign up or log in. - Set up a discount
+AT-01 Authentication and Setup - Log in with valid credentials. - Set up a discount
 tier. - Set up a warehouse. - Set up a subscription plan.
 
 Expected result: Basic backend configuration is available and usable.
@@ -987,13 +987,18 @@ stack. That document should be treated as the implementation technology
 reference when producing database, backend, frontend, API, and
 deployment designs.
 
-Confirmed stack summary: - Frontend: React + TypeScript + Vite +
-Tailwind CSS + shadcn/ui - Client/server state: TanStack Query - Charts:
-Recharts - Backend: Python + FastAPI + Pydantic + SQLAlchemy + Alembic -
-Database: Supabase PostgreSQL - Authentication: Supabase Auth -
-Realtime: Supabase Realtime - API: REST / JSON - Testing: Pytest -
-Architecture: Modular Monolith - Deployment: Vercel + Python application
-hosting + Supabase
+Confirmed stack summary:
+- Frontend: React + TypeScript + Vite + Tailwind CSS + shadcn/ui
+- Client/server state: TanStack Query
+- Charts: Recharts
+- Backend: Python + FastAPI + Pydantic + SQLAlchemy + Alembic
+- Database: PostgreSQL (direct/self-managed)
+- Authentication: FastAPI-owned manual authentication with JWT access tokens and PostgreSQL-backed refresh sessions
+- Realtime: not required for core implementation
+- API: REST / JSON
+- Testing: Pytest
+- Architecture: Modular Monolith
+- Deployment: Vercel + Python application hosting + PostgreSQL
 
 The technology stack is an implementation choice for this project; the
 original hackathon problem statement itself is technology-agnostic.

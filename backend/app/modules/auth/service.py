@@ -154,5 +154,27 @@ class AuthService:
         auth_repository.update_user_password(db, user, new_hash)
         auth_repository.revoke_all_user_sessions(db, user.id)
 
+    def signup(self, db: Session, request: SignupRequest) -> User:
+        """Register a new customer account."""
+        email_clean = request.email.strip().lower()
+        existing = auth_repository.get_user_by_email(db, email_clean)
+        if existing:
+            raise DealFlowException("Email already registered", status_code=400)
+
+        hashed_pwd = hash_password(request.password)
+        new_user = User(
+            name=request.name.strip(),
+            email=email_clean,
+            password_hash=hashed_pwd,
+            role=UserRole.CUSTOMER,
+            is_active=True,
+            customer_id=None,
+        )
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        return new_user
+
 
 auth_service = AuthService()
+

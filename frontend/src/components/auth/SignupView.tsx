@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { 
   Mail, 
   Lock, 
+  User as UserIcon,
   Eye, 
   EyeOff, 
   ArrowRight,
@@ -11,29 +12,55 @@ import {
 import { useApp } from '../../context/AppContext';
 import { authService, AuthError } from '../../services/authService';
 
-export const LoginView: React.FC = () => {
-  const { setCurrentPage, setAuthSession, showNotification } = useApp();
-  
+export const SignupView: React.FC = () => {
+  const { setCurrentPage, showNotification } = useApp();
+
+  const [nameInput, setNameInput] = useState<string>('');
   const [emailInput, setEmailInput] = useState<string>('');
   const [passwordInput, setPasswordInput] = useState<string>('');
+  const [confirmPasswordInput, setConfirmPasswordInput] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const handleSignIn = async (e: React.FormEvent) => {
+  const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isLoading) return;
 
+    const trimmedName = nameInput.trim();
     const trimmedEmail = emailInput.trim();
 
-    // Frontend validation
+    // Frontend Validations
+    if (!trimmedName) {
+      setErrorMessage('Please enter your full name.');
+      return;
+    }
+
     if (!trimmedEmail) {
       setErrorMessage('Please enter your email address.');
       return;
     }
 
+    // Basic email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmedEmail)) {
+      setErrorMessage('Please enter a valid email address.');
+      return;
+    }
+
     if (!passwordInput) {
-      setErrorMessage('Please enter your password.');
+      setErrorMessage('Please enter a password.');
+      return;
+    }
+
+    if (passwordInput.length < 8) {
+      setErrorMessage('Password must be at least 8 characters in length.');
+      return;
+    }
+
+    if (passwordInput !== confirmPasswordInput) {
+      setErrorMessage('Passwords do not match. Please verify and try again.');
       return;
     }
 
@@ -41,37 +68,23 @@ export const LoginView: React.FC = () => {
     setErrorMessage(null);
 
     try {
-      const response = await authService.login({
+      // POST /api/v1/auth/signup - exact payload: { name, email, password }
+      await authService.signup({
+        name: trimmedName,
         email: trimmedEmail,
         password: passwordInput,
       });
 
-      // Query current user if not provided in login response
-      let authUser = response.user;
-      if (!authUser) {
-        const me = await authService.getMe();
-        if (me) {
-          authUser = me;
-        }
-      }
-
-      // Establish authenticated application state
-      setAuthSession(response.access_token, authUser);
-      showNotification('Signed in successfully', 'success');
-
-      // Redirect to authenticated application entry point
-      if (authUser?.role === 'CUSTOMER_PORTAL' || authUser?.role === 'CUSTOMER') {
-        setCurrentPage('portal');
-      } else {
-        setCurrentPage('dashboard');
-      }
+      // 201 -> show success feedback and redirect to Login
+      showNotification('Account created successfully! Please sign in with your credentials.', 'success');
+      setCurrentPage('login');
     } catch (err: unknown) {
       if (err instanceof AuthError) {
         setErrorMessage(err.message);
       } else if (err instanceof Error) {
         setErrorMessage(err.message);
       } else {
-        setErrorMessage('An unexpected error occurred during sign in. Please try again.');
+        setErrorMessage('An unexpected error occurred during registration. Please try again.');
       }
     } finally {
       setIsLoading(false);
@@ -89,7 +102,7 @@ export const LoginView: React.FC = () => {
           DealFlow<span className="text-[#2563EB]">360</span>
         </h1>
         <p className="text-xs text-slate-500 font-normal mt-1">
-          Intelligent Sales Operations Platform
+          Create Your DealFlow360 Customer Account
         </p>
       </div>
 
@@ -106,11 +119,32 @@ export const LoginView: React.FC = () => {
           </div>
         )}
 
-        <form onSubmit={handleSignIn} className="space-y-4">
+        <form onSubmit={handleSignUp} className="space-y-4">
+          {/* Full Name Field */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-800 mb-1.5">
+              Full Name
+            </label>
+            <div className="relative">
+              <UserIcon className="w-4 h-4 text-slate-400 absolute left-3.5 top-3 pointer-events-none" />
+              <input
+                type="text"
+                value={nameInput}
+                onChange={(e) => {
+                  setNameInput(e.target.value);
+                  if (errorMessage) setErrorMessage(null);
+                }}
+                disabled={isLoading}
+                placeholder="Jane Doe"
+                className="w-full bg-white border border-slate-200 rounded-lg pl-10 pr-3.5 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed"
+              />
+            </div>
+          </div>
+
           {/* Email Field */}
           <div>
             <label className="block text-xs font-semibold text-slate-800 mb-1.5">
-              Email
+              Email Address
             </label>
             <div className="relative">
               <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3 pointer-events-none" />
@@ -122,7 +156,7 @@ export const LoginView: React.FC = () => {
                   if (errorMessage) setErrorMessage(null);
                 }}
                 disabled={isLoading}
-                placeholder="name@dealflow360.io"
+                placeholder="name@example.com"
                 className="w-full bg-white border border-slate-200 rounded-lg pl-10 pr-3.5 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed"
               />
             </div>
@@ -131,7 +165,7 @@ export const LoginView: React.FC = () => {
           {/* Password Field */}
           <div>
             <label className="block text-xs font-semibold text-slate-800 mb-1.5">
-              Password
+              Password <span className="text-slate-400 font-normal">(min 8 characters)</span>
             </label>
             <div className="relative">
               <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3 pointer-events-none" />
@@ -162,6 +196,40 @@ export const LoginView: React.FC = () => {
             </div>
           </div>
 
+          {/* Confirm Password Field */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-800 mb-1.5">
+              Confirm Password
+            </label>
+            <div className="relative">
+              <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3 pointer-events-none" />
+              <input
+                type={showConfirmPassword ? 'text' : 'password'}
+                value={confirmPasswordInput}
+                onChange={(e) => {
+                  setConfirmPasswordInput(e.target.value);
+                  if (errorMessage) setErrorMessage(null);
+                }}
+                disabled={isLoading}
+                placeholder="••••••••"
+                className="w-full bg-white border border-slate-200 rounded-lg pl-10 pr-10 py-2.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition disabled:bg-slate-50 disabled:text-slate-500 disabled:cursor-not-allowed"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                disabled={isLoading}
+                className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 transition p-0.5 cursor-pointer disabled:cursor-not-allowed"
+                title={showConfirmPassword ? 'Hide password' : 'Show password'}
+              >
+                {showConfirmPassword ? (
+                  <EyeOff className="w-4 h-4" />
+                ) : (
+                  <Eye className="w-4 h-4" />
+                )}
+              </button>
+            </div>
+          </div>
+
           {/* Submit Button */}
           <div className="pt-2">
             <button
@@ -172,11 +240,11 @@ export const LoginView: React.FC = () => {
               {isLoading ? (
                 <>
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Signing in...</span>
+                  <span>Creating Account...</span>
                 </>
               ) : (
                 <>
-                  <span>Sign In to DealFlow360</span>
+                  <span>Create Account</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </>
               )}
@@ -184,16 +252,16 @@ export const LoginView: React.FC = () => {
           </div>
         </form>
 
-        {/* Sign Up Link */}
+        {/* Existing User Redirect Link */}
         <div className="mt-6 pt-4 border-t border-slate-100 text-center">
           <p className="text-xs text-slate-500">
-            Don't have an account?{' '}
+            Already have an account?{' '}
             <button
               type="button"
-              onClick={() => setCurrentPage('signup')}
+              onClick={() => setCurrentPage('login')}
               className="text-[#2563EB] font-semibold hover:underline cursor-pointer"
             >
-              Sign Up
+              Sign In
             </button>
           </p>
         </div>
@@ -201,5 +269,3 @@ export const LoginView: React.FC = () => {
     </div>
   );
 };
-
-

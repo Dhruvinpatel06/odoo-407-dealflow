@@ -61,12 +61,30 @@ def _clear_refresh_cookie(response: Response) -> None:
 
 
 @router.post(
+    "/signup",
+    response_model=UserResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Public User Signup",
+)
+def signup(
+    request: SignupRequest,
+    db: Session = Depends(get_db),
+) -> UserResponse:
+    """
+    Public registration endpoint. Automatically creates a CUSTOMER user with is_active=True.
+    """
+    user = auth_service.signup(db=db, request=request)
+    return UserResponse.model_validate(user)
+
+
+@router.post(
     "/login",
     response_model=TokenResponse,
     status_code=status.HTTP_200_OK,
     summary="User Login",
 )
 def login(
+
     request: LoginRequest,
     response: Response,
     db: Session = Depends(get_db),

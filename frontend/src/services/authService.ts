@@ -1,5 +1,13 @@
 import { API_BASE_URL } from './api';
-import { LoginRequest, LoginResponse, RefreshResponse, LogoutResponse, AuthUserInfo } from '../types';
+import { 
+  LoginRequest, 
+  LoginResponse, 
+  RefreshResponse, 
+  LogoutResponse, 
+  AuthUserInfo,
+  SignupRequest,
+  UserResponse
+} from '../types';
 
 export class AuthError extends Error {
   constructor(
@@ -31,6 +39,73 @@ export const authService = {
   isAuthenticated(): boolean {
     return Boolean(inMemoryAccessToken);
   },
+
+  /**
+   * Public user signup endpoint:
+   * POST /api/v1/auth/signup
+   *
+   * Automatically creates a CUSTOMER account.
+   */
+  async signup(payload: SignupRequest): Promise<UserResponse> {
+    const url = `${getBaseUrl()}/auth/signup`;
+
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: payload.name.trim(),
+          email: payload.email.trim(),
+          password: payload.password,
+        }),
+      });
+    } catch (networkError) {
+      throw new AuthError(
+        0,
+        'Unable to connect to the authentication server. Please check your network connection or verify that the server is running.',
+        networkError
+      );
+    }
+
+    if (!response.ok) {
+      let errorMessage = 'Registration failed.';
+      let details: unknown = null;
+
+      try {
+        const errorData = await response.json();
+        details = errorData;
+        if (typeof errorData?.detail === 'string') {
+          errorMessage = errorData.detail;
+        } else if (Array.isArray(errorData?.detail)) {
+          errorMessage = errorData.detail.map((d: any) => d.msg || 'Validation error').join('; ');
+        } else if (typeof errorData?.message === 'string') {
+          errorMessage = errorData.message;
+        }
+      } catch {
+        // Non-JSON response
+      }
+
+      if (response.status === 400) {
+        throw new AuthError(400, errorMessage || 'Email already registered or invalid request.', details);
+      }
+
+      if (response.status === 422) {
+        throw new AuthError(422, errorMessage || 'Validation error. Please check your inputs.', details);
+      }
+
+      if (response.status >= 500) {
+        throw new AuthError(response.status, 'Registration service is temporarily unavailable. Please try again later.', details);
+      }
+
+      throw new AuthError(response.status, errorMessage, details);
+    }
+
+    return await response.json();
+  },
+
 
   /**
    * Authenticate user credentials against FastAPI endpoint:
@@ -205,5 +280,41 @@ export const authService = {
       return null;
     }
   },
+
+  /**
+   * Change current user's password:
+   * POST /api/v1/auth/change-password
+   */
+  async changePassword(currentPassword: string, newPassword: string): Promise<LogoutResponse> {
+    const url = `${getBaseUrl()}/auth/change-password`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(inMemoryAccessToken ? { 'Authorization': `Bearer ${inMemoryAccessToken}` } : {}),
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        current_password: currentPassword,
+        new_password: newPassword,
+      }),
+    });
+
+    if (!response.ok) {
+      let errDetail = 'Failed to change password.';
+      try {
+        const d = await response.json();
+        if (d.detail) errDetail = d.detail;
+      } catch {
+        // ignore
+      }
+      throw new AuthError(response.status, errDetail);
+    }
+
+    inMemoryAccessToken = null;
+    return await response.json();
+  },
 };
+
 

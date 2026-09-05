@@ -55,3 +55,7 @@ export const queryKeys = {
     config: ['governance', 'config'] as const,
   }
 };
+
+export { authService, AuthError } from './authService';
+export { userService, UserAdminError } from './userService';
+

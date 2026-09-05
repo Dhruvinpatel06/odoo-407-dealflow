@@ -1,21 +1,34 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   ShieldCheck, 
   Sliders, 
   Percent, 
   Save, 
-  Package,
-  Warehouse as WarehouseIcon,
-  Repeat,
-  DollarSign,
-  Boxes
+  Package, 
+  Warehouse as WarehouseIcon, 
+  Repeat, 
+  DollarSign, 
+  Boxes,
+  Users,
+  UserPlus,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  RefreshCw,
+  AlertCircle,
+  CheckCircle2,
+  X,
+  Loader2
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { AccessRestrictedView } from '../common/AccessRestrictedView';
 import { mockProducts, mockWarehouses } from '../../mockData';
+import { userService, UserAdminError } from '../../services/api';
+import { UserResponse, AdminCreateUserRequest } from '../../types';
 
 export const AdminConfigView: React.FC = () => {
-  const { showNotification, currentUser, governanceConfig, updateGovernanceConfig, subscriptions } = useApp();
+  const { showNotification, currentUser, governanceConfig, updateGovernanceConfig, subscriptions, accessToken } = useApp();
 
   // Defense-in-depth RBAC check
   if (currentUser.role !== 'ADMIN') {
@@ -27,7 +40,115 @@ export const AdminConfigView: React.FC = () => {
     );
   }
 
-  const [activeTab, setActiveTab] = useState<'DISCOUNTS' | 'CATALOG' | 'WAREHOUSES' | 'SUBSCRIPTIONS' | 'RISK'>('DISCOUNTS');
+  const [activeTab, setActiveTab] = useState<'DISCOUNTS' | 'CATALOG' | 'WAREHOUSES' | 'SUBSCRIPTIONS' | 'RISK' | 'USERS'>('DISCOUNTS');
+
+  // Users Management State
+  const [usersList, setUsersList] = useState<UserResponse[]>([]);
+  const [isUsersLoading, setIsUsersLoading] = useState<boolean>(false);
+  const [usersError, setUsersError] = useState<string | null>(null);
+  const [isAddUserOpen, setIsAddUserOpen] = useState<boolean>(false);
+
+  // Add User Form State
+  const [newUserName, setNewUserName] = useState<string>('');
+  const [newUserEmail, setNewUserEmail] = useState<string>('');
+  const [newUserPassword, setNewUserPassword] = useState<string>('');
+  const [newUserRole, setNewUserRole] = useState<'CUSTOMER' | 'SALES_REP' | 'SALES_MANAGER' | 'FINANCE_OPERATIONS' | 'ADMIN'>('SALES_REP');
+  const [newUserCustomerId, setNewUserCustomerId] = useState<string>('');
+  const [newUserIsActive, setNewUserIsActive] = useState<boolean>(true);
+  const [showNewUserPassword, setShowNewUserPassword] = useState<boolean>(false);
+  const [isCreatingUser, setIsCreatingUser] = useState<boolean>(false);
+  const [addUserFormError, setAddUserFormError] = useState<string | null>(null);
+
+  const fetchUsers = useCallback(async () => {
+    setIsUsersLoading(true);
+    setUsersError(null);
+    try {
+      const data = await userService.getUsers(accessToken);
+      setUsersList(data);
+    } catch (err: unknown) {
+      if (err instanceof UserAdminError) {
+        setUsersError(err.message);
+      } else {
+        setUsersError('Failed to load users from the server.');
+      }
+    } finally {
+      setIsUsersLoading(false);
+    }
+  }, [accessToken]);
+
+  useEffect(() => {
+    if (activeTab === 'USERS') {
+      fetchUsers();
+    }
+  }, [activeTab, fetchUsers]);
+
+  const handleAddUserSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isCreatingUser) return;
+
+    if (!newUserName.trim()) {
+      setAddUserFormError('Please enter user name.');
+      return;
+    }
+    if (!newUserEmail.trim()) {
+      setAddUserFormError('Please enter user email address.');
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(newUserEmail.trim())) {
+      setAddUserFormError('Please enter a valid email address.');
+      return;
+    }
+    if (!newUserPassword) {
+      setAddUserFormError('Please enter a password.');
+      return;
+    }
+    if (newUserPassword.length < 8) {
+      setAddUserFormError('Password must be at least 8 characters in length.');
+      return;
+    }
+
+    setIsCreatingUser(true);
+    setAddUserFormError(null);
+
+    try {
+      const payload: AdminCreateUserRequest = {
+        name: newUserName.trim(),
+        email: newUserEmail.trim(),
+        password: newUserPassword,
+        role: newUserRole,
+        is_active: newUserIsActive,
+      };
+
+      if (newUserCustomerId.trim()) {
+        payload.customer_id = newUserCustomerId.trim();
+      }
+
+      await userService.createUser(payload, accessToken);
+
+      // 201 -> close/reset form, show success feedback, and refresh Users list
+      showNotification(`User "${newUserName.trim()}" created successfully.`, 'success');
+      setNewUserName('');
+      setNewUserEmail('');
+      setNewUserPassword('');
+      setNewUserRole('SALES_REP');
+      setNewUserCustomerId('');
+      setNewUserIsActive(true);
+      setIsAddUserOpen(false);
+      await fetchUsers();
+    } catch (err: unknown) {
+      if (err instanceof UserAdminError) {
+        setAddUserFormError(err.message);
+      } else if (err instanceof Error) {
+        setAddUserFormError(err.message);
+      } else {
+        setAddUserFormError('An unexpected error occurred while creating user.');
+      }
+    } finally {
+      setIsCreatingUser(false);
+    }
+  };
+
 
   // Local state initialized from canonical governanceConfig
   const [repCeiling, setRepCeiling] = useState(governanceConfig.roleCeilings.repCeiling);
@@ -151,7 +272,18 @@ export const AdminConfigView: React.FC = () => {
           <Sliders className="w-3.5 h-3.5" />
           <span>5. Risk Scoring & Margin</span>
         </button>
+
+        <button
+          onClick={() => setActiveTab('USERS')}
+          className={`pb-3 px-3 text-xs font-bold border-b-2 transition flex items-center gap-2 cursor-pointer ${
+            activeTab === 'USERS' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <Users className="w-3.5 h-3.5" />
+          <span>6. Users & Access</span>
+        </button>
       </div>
+
 
       {/* Tab 1: Discount Ceilings */}
       {activeTab === 'DISCOUNTS' && (
@@ -539,6 +671,301 @@ export const AdminConfigView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Tab 6: Users & Access */}
+      {activeTab === 'USERS' && (
+        <div className="space-y-6">
+          {/* Top Bar for Users: Info + Add User Action */}
+          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-blue-600" />
+                <h3 className="text-sm font-bold text-slate-900">System Users & Authentication Access</h3>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                View platform identities, roles, and provision new enterprise users.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2.5">
+              <button
+                onClick={fetchUsers}
+                disabled={isUsersLoading}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+                title="Refresh users list"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isUsersLoading ? 'animate-spin text-blue-600' : ''}`} />
+                <span>Refresh</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setAddUserFormError(null);
+                  setIsAddUserOpen(true);
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition cursor-pointer"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>Add User</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Add User Modal / Overlay Form */}
+          {isAddUserOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+              <div className="w-full max-w-md bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden">
+                <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <UserPlus className="w-4 h-4 text-blue-600" />
+                    <h4 className="text-sm font-bold text-slate-900">Add New System User</h4>
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (!isCreatingUser) setIsAddUserOpen(false);
+                    }}
+                    disabled={isCreatingUser}
+                    className="text-slate-400 hover:text-slate-600 p-1 rounded-md transition cursor-pointer disabled:opacity-50"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleAddUserSubmit} className="p-6 space-y-4">
+                  {addUserFormError && (
+                    <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-600" />
+                      <span>{addUserFormError}</span>
+                    </div>
+                  )}
+
+                  {/* Name */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-800 mb-1.5">
+                      Name <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={newUserName}
+                      onChange={(e) => {
+                        setNewUserName(e.target.value);
+                        if (addUserFormError) setAddUserFormError(null);
+                      }}
+                      disabled={isCreatingUser}
+                      placeholder="e.g. John Sales"
+                      className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition disabled:bg-slate-50"
+                    />
+                  </div>
+
+                  {/* Email */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-800 mb-1.5">
+                      Email <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="email"
+                      value={newUserEmail}
+                      onChange={(e) => {
+                        setNewUserEmail(e.target.value);
+                        if (addUserFormError) setAddUserFormError(null);
+                      }}
+                      disabled={isCreatingUser}
+                      placeholder="e.g. john.sales@test.com"
+                      className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition disabled:bg-slate-50"
+                    />
+                  </div>
+
+                  {/* Password */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-800 mb-1.5">
+                      Password <span className="text-rose-500">*</span> <span className="text-slate-400 font-normal">(min 8 characters)</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showNewUserPassword ? 'text' : 'password'}
+                        value={newUserPassword}
+                        onChange={(e) => {
+                          setNewUserPassword(e.target.value);
+                          if (addUserFormError) setAddUserFormError(null);
+                        }}
+                        disabled={isCreatingUser}
+                        placeholder="••••••••"
+                        className="w-full bg-white border border-slate-200 rounded-lg pl-3 pr-10 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition disabled:bg-slate-50"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNewUserPassword(!showNewUserPassword)}
+                        disabled={isCreatingUser}
+                        className="absolute right-3 top-2 text-slate-400 hover:text-slate-600 transition cursor-pointer"
+                        title={showNewUserPassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showNewUserPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Role Dropdown */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-800 mb-1.5">
+                      Role <span className="text-rose-500">*</span>
+                    </label>
+                    <select
+                      value={newUserRole}
+                      onChange={(e) => setNewUserRole(e.target.value as any)}
+                      disabled={isCreatingUser}
+                      className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition disabled:bg-slate-50 cursor-pointer"
+                    >
+                      <option value="CUSTOMER">CUSTOMER</option>
+                      <option value="SALES_REP">SALES_REP</option>
+                      <option value="SALES_MANAGER">SALES_MANAGER</option>
+                      <option value="FINANCE_OPERATIONS">FINANCE_OPERATIONS</option>
+                      <option value="ADMIN">ADMIN</option>
+                    </select>
+                  </div>
+
+                  {/* Customer ID (Optional) */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-800 mb-1.5">
+                      Customer ID <span className="text-slate-400 font-normal">(optional UUID)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={newUserCustomerId}
+                      onChange={(e) => setNewUserCustomerId(e.target.value)}
+                      disabled={isCreatingUser}
+                      placeholder="Leave empty if not customer-associated"
+                      className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition disabled:bg-slate-50 font-mono"
+                    />
+                  </div>
+
+                  {/* Active Status */}
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="checkbox"
+                      id="newUserActiveCheckbox"
+                      checked={newUserIsActive}
+                      onChange={(e) => setNewUserIsActive(e.target.checked)}
+                      disabled={isCreatingUser}
+                      className="w-4 h-4 rounded text-blue-600 accent-blue-600 focus:ring-blue-500 border-slate-300 cursor-pointer"
+                    />
+                    <label htmlFor="newUserActiveCheckbox" className="text-xs font-medium text-slate-700 cursor-pointer select-none">
+                      Active account status (default enabled)
+                    </label>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsAddUserOpen(false)}
+                      disabled={isCreatingUser}
+                      className="px-3.5 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isCreatingUser}
+                      className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-xs font-semibold shadow-xs transition flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
+                    >
+                      {isCreatingUser ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Creating User...</span>
+                        </>
+                      ) : (
+                        <>
+                          <UserPlus className="w-3.5 h-3.5" />
+                          <span>Create User</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* Users Table Card */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-900">Registered System Accounts</h3>
+              <span className="text-xs text-slate-500 font-mono">
+                {usersList.length} Accounts
+              </span>
+            </div>
+
+            {usersError && (
+              <div className="m-4 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-amber-600" />
+                <span>{usersError}</span>
+              </div>
+            )}
+
+            {isUsersLoading && usersList.length === 0 ? (
+              <div className="p-12 text-center text-slate-400 text-xs flex flex-col items-center justify-center gap-2">
+                <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+                <span>Loading system users...</span>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-semibold text-[10px]">
+                      <th className="py-3 px-4">User</th>
+                      <th className="py-3 px-3">Role</th>
+                      <th className="py-3 px-3">Status</th>
+                      <th className="py-3 px-3">Customer Link</th>
+                      <th className="py-3 px-3">Created</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {usersList.map((u) => {
+                      const roleBadgeColor = 
+                        u.role === 'ADMIN' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                        u.role === 'SALES_MANAGER' ? 'bg-purple-50 text-purple-700 border-purple-200' :
+                        u.role === 'SALES_REP' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                        u.role === 'FINANCE_OPERATIONS' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                        'bg-teal-50 text-teal-700 border-teal-200';
+
+                      return (
+                        <tr key={u.id} className="hover:bg-slate-50/60 transition">
+                          <td className="py-3 px-4">
+                            <div className="font-bold text-slate-900">{u.name}</div>
+                            <div className="text-[11px] text-slate-500 font-mono">{u.email}</div>
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold border font-mono ${roleBadgeColor}`}>
+                              {u.role}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border ${
+                              u.is_active 
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                                : 'bg-slate-100 text-slate-500 border-slate-200'
+                            }`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${u.is_active ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
+                              {u.is_active ? 'Active' : 'Inactive'}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 font-mono text-[11px] text-slate-500">
+                            {u.customer_id ? u.customer_id.substring(0, 8) + '...' : '—'}
+                          </td>
+                          <td className="py-3 px-3 text-[11px] text-slate-500 font-mono">
+                            {u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

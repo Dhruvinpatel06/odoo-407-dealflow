@@ -31,7 +31,7 @@ export const AdminConfigView: React.FC = () => {
   const { showNotification, currentUser, governanceConfig, updateGovernanceConfig, subscriptions, accessToken } = useApp();
 
   // Defense-in-depth RBAC check
-  if (currentUser.role !== 'ADMIN') {
+  if ((currentUser.role || '').toUpperCase() !== 'ADMIN') {
     return (
       <AccessRestrictedView
         requiredRole="Platform Administrator (Alex Mercer)"

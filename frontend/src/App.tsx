@@ -16,6 +16,8 @@ import { LoginView } from './components/auth/LoginView';
 import { SignupView } from './components/auth/SignupView';
 import { TestFlowGuideModal } from './components/common/TestFlowGuideModal';
 import { AccessRestrictedView } from './components/common/AccessRestrictedView';
+import { UserRole } from './types';
+import { ROLE_PERMISSIONS } from './utils/rbac';
 import { CheckCircle2, AlertTriangle, Info, X } from 'lucide-react';
 
 const AppContent: React.FC = () => {
@@ -88,6 +90,36 @@ const AppContent: React.FC = () => {
         <AccessRestrictedView 
           requiredRole="Platform Administrator (Alex Mercer)" 
           featureName="System Governance & Policy Administration" 
+        />
+      );
+    }
+
+    const normalizedRole = (currentUser.role ? String(currentUser.role).toUpperCase() : '') as UserRole;
+    const perms = ROLE_PERMISSIONS[normalizedRole] || ROLE_PERMISSIONS.SALES_REP;
+
+    if (currentPage === 'billing' && !perms.canAccessBilling) {
+      return (
+        <AccessRestrictedView 
+          requiredRole="Finance & RevOps (Elena Rostova) or Administrator" 
+          featureName="Hybrid Billing & Recurring Subscriptions" 
+        />
+      );
+    }
+
+    if (currentPage === 'reports' && !perms.canAccessReports) {
+      return (
+        <AccessRestrictedView 
+          requiredRole="Finance & RevOps or Platform Administrator" 
+          featureName="Executive Reporting & Operations Analytics" 
+        />
+      );
+    }
+
+    if (currentPage === 'manager-governance' && !perms.canAccessManagerGovernance) {
+      return (
+        <AccessRestrictedView 
+          requiredRole="Platform Administrator (Alex Mercer)" 
+          featureName="Sales Operations Governance & Thresholds" 
         />
       );
     }

@@ -65,12 +65,12 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
     canViewRiskScores: true,
     canCreateQuotations: true,
     canEditGovernancePolicies: false,
-    canAccessManagerGovernance: true, // Limited governance area for discount tiers & approval thresholds
-    canAccessBilling: true,
+    canAccessManagerGovernance: false, // Restricted to Administrator
+    canAccessBilling: false,           // Restricted to Finance & Operations / Admin
     canAccessFulfillment: true,
     canEditFulfillment: false,
     canAccessHealth: true,
-    canAccessReports: true,
+    canAccessReports: false,           // Restricted to Finance & Operations / Admin
     isExternalCustomer: false,
   },
   FINANCE_OPERATIONS: {
@@ -352,7 +352,7 @@ export function getRoleMeta(role: UserRole | string) {
         badgeColor: 'bg-purple-50 text-purple-700 border-purple-200',
         badgeDot: 'bg-purple-600',
         desc: 'Commercial governor: Authoritative Level 1 approver for quotes exceeding rep discount limits.',
-        restrictionsSummary: "Approvals shown prominently. Administration is hidden. Review and override capabilities enabled."
+        restrictionsSummary: "Approvals queue & team radar active. Billing, reporting, and policy governance restricted to Finance/Admin."
       };
     case 'FINANCE_OPERATIONS':
       return {

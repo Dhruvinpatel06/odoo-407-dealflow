@@ -234,5 +234,27 @@ export interface NegotiationRequest {
   notes: string;
   status: 'PENDING_REVIEW' | 'ACCEPTED' | 'COUNTERED' | 'REJECTED';
   createdAt: string;
-  lineComments: { lineId: string; comment: string }[];
+  lineComments: { lineId: string; comment: string; productName?: string }[];
+  repResponseNotes?: string;
+  counterDiscountPercent?: number;
+  respondedAt?: string;
 }
+
+export interface GovernanceConfig {
+  roleCeilings: {
+    repCeiling: number;
+    managerCeiling: number;
+    financeCeiling: number;
+  };
+  tierDiscountCeilings: Record<CustomerTier, number>;
+  categoryDiscountCeilings: Record<ProductCategory, number>;
+  managerApprovalRiskThreshold: number;
+  financeApprovalRiskThreshold: number;
+  minCorporateMarginFloor: number;
+  riskWeights: {
+    discountBreach: number;
+    marginDeviation: number;
+    paymentRisk: number;
+  };
+}
+

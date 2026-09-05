@@ -12,9 +12,9 @@ import { CustomerPortal } from './components/portal/CustomerPortal';
 import { DealHealthView } from './components/health/DealHealthView';
 import { ReportsView } from './components/reports/ReportsView';
 import { AdminConfigView } from './components/admin/AdminConfigView';
+import { ManagerGovernanceView } from './components/governance/ManagerGovernanceView';
 import { LoginView } from './components/auth/LoginView';
 import { TestFlowGuideModal } from './components/common/TestFlowGuideModal';
-import { RoleSwitcherBar } from './components/common/RoleSwitcherBar';
 import { AccessRestrictedView } from './components/common/AccessRestrictedView';
 import { CheckCircle2, AlertTriangle, Info, X } from 'lucide-react';
 
@@ -75,6 +75,8 @@ const AppContent: React.FC = () => {
         return <DashboardView />;
       case 'quotations':
         return <QuotationsList />;
+      case 'pipeline':
+        return <QuotationsList initialViewMode="kanban" />;
       case 'quote-builder':
         return <QuoteBuilder />;
       case 'approvals':
@@ -87,6 +89,8 @@ const AppContent: React.FC = () => {
         return <DealHealthView />;
       case 'reports':
         return <ReportsView />;
+      case 'manager-governance':
+        return <ManagerGovernanceView />;
       case 'admin':
       case 'admin-config':
         return <AdminConfigView />;
@@ -103,7 +107,6 @@ const AppContent: React.FC = () => {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <Topbar />
-        <RoleSwitcherBar />
         
         <main className="flex-1 overflow-y-auto bg-[#F9FAFB]">
           {renderCurrentPage()}

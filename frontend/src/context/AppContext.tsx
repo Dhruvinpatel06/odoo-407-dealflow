@@ -1,20 +1,26 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { 
   User, 
   UserRole, 
+  Customer,
+  Product, 
   Quotation, 
   QuotationLine, 
-  Product, 
   ApprovalInstance, 
+  ApprovalStep,
+  ApprovalLevel,
   OrderFulfillment, 
   Invoice, 
   SubscriptionItem, 
   DealAlert, 
   Recommendation,
-  AuditLog
+  AuditLog,
+  NegotiationRequest,
+  GovernanceConfig
 } from '../types';
 import { 
   mockUsers, 
+  mockCustomers,
   mockQuotations, 
   mockProducts, 
   mockApprovals, 
@@ -22,8 +28,28 @@ import {
   mockSubscriptions, 
   mockInvoices, 
   mockDealAlerts, 
-  mockRecommendations 
+  mockRecommendations,
+  mockGovernanceConfig,
+  mockNegotiations
 } from '../mockData';
+
+function loadFromStorage<T>(key: string, fallback: T): T {
+  try {
+    const item = localStorage.getItem(key);
+    return item ? JSON.parse(item) : fallback;
+  } catch (e) {
+    console.warn(`Error loading ${key} from localStorage:`, e);
+    return fallback;
+  }
+}
+
+function saveToStorage<T>(key: string, value: T): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    console.warn(`Error saving ${key} to localStorage:`, e);
+  }
+}
 
 interface AppContextType {
   currentUser: User;
@@ -35,6 +61,7 @@ interface AppContextType {
   setSelectedQuoteId: (id: string) => void;
   
   // Data
+  customers: Customer[];
   quotations: Quotation[];
   activeQuotation: Quotation | undefined;
   products: Product[];
@@ -44,16 +71,23 @@ interface AppContextType {
   invoices: Invoice[];
   dealAlerts: DealAlert[];
   recommendations: Recommendation[];
+  negotiations: NegotiationRequest[];
   auditLogs: AuditLog[];
+  governanceConfig: GovernanceConfig;
   
   // Actions
+  createNewQuotation: (customerId?: string) => string;
   updateLineQuantity: (lineId: string, delta: number) => void;
   updateLineDiscount: (lineId: string, discountPercent: number) => void;
+  updateOrderDiscount: (quoteId: string, discountPercent: number) => void;
+  updateActiveQuoteCustomer: (customerId: string) => void;
   addProductToActiveQuote: (productId: string) => void;
   removeLineFromQuote: (lineId: string) => void;
   addRecommendationToQuote: (recommendation: Recommendation) => void;
   dismissRecommendation: (productId: string) => void;
   recalculateActiveQuote: () => void;
+  saveDraftQuote: () => void;
+  sendQuoteToCustomer: () => void;
   submitActiveQuoteForApproval: () => void;
   confirmActiveQuote: () => void;
   
@@ -69,16 +103,33 @@ interface AppContextType {
   
   // Billing
   recordPayment: (invoiceId: string, amount: number) => void;
+  issueCreditNote: (invoiceId: string, amount: number, reason: string) => void;
   modifySubscription: (subId: string, deltaQty: number) => void;
   
   // Portal Negotiation
-  submitCustomerNegotiation: (quoteId: string, counterDiscount: number, notes: string) => void;
+  submitCustomerNegotiation: (
+    quoteId: string, 
+    counterDiscount: number, 
+    notes: string, 
+    lineComments?: { lineId: string; comment: string; productName?: string }[]
+  ) => void;
+  addLineComment: (quoteId: string, lineId: string, comment: string, authorName?: string) => void;
+  respondToNegotiation: (
+    quoteId: string, 
+    action: 'ACCEPT' | 'COUNTER' | 'DECLINE', 
+    counterDiscount?: number, 
+    repNotes?: string
+  ) => void;
   customerConfirmQuote: (quoteId: string) => void;
   
   // Health
   acknowledgeAlert: (alertId: string) => void;
   resolveAlert: (alertId: string) => void;
   triggerAlertNudge: (alertId: string) => void;
+  
+  // Governance Configuration
+  updateGovernanceConfig: (newConfig: Partial<GovernanceConfig>) => void;
+  resetDemoData: () => void;
   
   // Notifications
   notification: { message: string; type: 'success' | 'warning' | 'info' | 'error' } | null;
@@ -92,19 +143,24 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<User>(mockUsers[0]); // Default Sales Rep Sarah Chen
-  const [currentPage, setCurrentPage] = useState<string>('dashboard');
-  const [selectedQuoteId, setSelectedQuoteId] = useState<string>('q-1048');
+  // Hydrated State with LocalStorage Persistence
+  const [currentUser, setCurrentUser] = useState<User>(() => loadFromStorage('dealflow_user', mockUsers[0]));
+  const [currentPage, setCurrentPage] = useState<string>(() => loadFromStorage('dealflow_page', 'login'));
+  const [selectedQuoteId, setSelectedQuoteId] = useState<string>(() => loadFromStorage('dealflow_quote_id', 'q-1048'));
   
-  const [quotations, setQuotations] = useState<Quotation[]>(mockQuotations);
+  const [customers] = useState<Customer[]>(mockCustomers);
   const [products] = useState<Product[]>(mockProducts);
-  const [approvals, setApprovals] = useState<ApprovalInstance[]>(mockApprovals);
-  const [fulfillments, setFulfillments] = useState<Record<string, OrderFulfillment>>(mockFulfillments);
-  const [subscriptions, setSubscriptions] = useState<SubscriptionItem[]>(mockSubscriptions);
-  const [invoices, setInvoices] = useState<Invoice[]>(mockInvoices);
-  const [dealAlerts, setDealAlerts] = useState<DealAlert[]>(mockDealAlerts);
+  const [quotations, setQuotations] = useState<Quotation[]>(() => loadFromStorage('dealflow_quotations', mockQuotations));
+  const [approvals, setApprovals] = useState<ApprovalInstance[]>(() => loadFromStorage('dealflow_approvals', mockApprovals));
+  const [fulfillments, setFulfillments] = useState<Record<string, OrderFulfillment>>(() => loadFromStorage('dealflow_fulfillments', mockFulfillments));
+  const [subscriptions, setSubscriptions] = useState<SubscriptionItem[]>(() => loadFromStorage('dealflow_subscriptions', mockSubscriptions));
+  const [invoices, setInvoices] = useState<Invoice[]>(() => loadFromStorage('dealflow_invoices', mockInvoices));
+  const [dealAlerts, setDealAlerts] = useState<DealAlert[]>(() => loadFromStorage('dealflow_alerts', mockDealAlerts));
+  const [negotiations, setNegotiations] = useState<NegotiationRequest[]>(() => loadFromStorage('dealflow_negotiations', mockNegotiations));
   const [recommendations, setRecommendations] = useState<Recommendation[]>(mockRecommendations);
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([
+  const [governanceConfig, setGovernanceConfig] = useState<GovernanceConfig>(() => loadFromStorage('dealflow_governance_config', mockGovernanceConfig));
+  
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => loadFromStorage('dealflow_audit_logs', [
     {
       id: 'aud-init-1',
       entityType: 'QUOTATION',
@@ -125,10 +181,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       timestamp: '2026-09-04T16:45:00Z',
       reason: 'Blended risk score 72 > 70 threshold triggers sequential Manager -> Finance approval.'
     }
-  ]);
+  ]));
 
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'warning' | 'info' | 'error' } | null>(null);
   const [isGuideOpen, setIsGuideOpen] = useState<boolean>(false);
+
+  // Sync to localStorage
+  useEffect(() => { saveToStorage('dealflow_user', currentUser); }, [currentUser]);
+  useEffect(() => { saveToStorage('dealflow_page', currentPage); }, [currentPage]);
+  useEffect(() => { saveToStorage('dealflow_quote_id', selectedQuoteId); }, [selectedQuoteId]);
+  useEffect(() => { saveToStorage('dealflow_quotations', quotations); }, [quotations]);
+  useEffect(() => { saveToStorage('dealflow_approvals', approvals); }, [approvals]);
+  useEffect(() => { saveToStorage('dealflow_fulfillments', fulfillments); }, [fulfillments]);
+  useEffect(() => { saveToStorage('dealflow_subscriptions', subscriptions); }, [subscriptions]);
+  useEffect(() => { saveToStorage('dealflow_invoices', invoices); }, [invoices]);
+  useEffect(() => { saveToStorage('dealflow_alerts', dealAlerts); }, [dealAlerts]);
+  useEffect(() => { saveToStorage('dealflow_negotiations', negotiations); }, [negotiations]);
+  useEffect(() => { saveToStorage('dealflow_audit_logs', auditLogs); }, [auditLogs]);
+  useEffect(() => { saveToStorage('dealflow_governance_config', governanceConfig); }, [governanceConfig]);
 
   const showNotification = (message: string, type: 'success' | 'warning' | 'info' | 'error' = 'info') => {
     setNotification({ message, type });
@@ -156,15 +226,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const activeQuotation = quotations.find(q => q.id === selectedQuoteId) || quotations[0];
 
-  // Recalculate quotation according to authoritative business governance rules
-  const recalculateHelper = (quote: Quotation): Quotation => {
-    let subtotal = 0;
+  // Authoritative recalculation according to configured governance rules
+  const recalculateHelper = (quote: Quotation, config?: GovernanceConfig): Quotation => {
+    const currentConfig = config || governanceConfig;
+    let grossSubtotal = 0;
+    let subtotalBeforeOrderDiscount = 0;
     let totalCost = 0;
-    let totalDiscountAmount = 0;
-    let taxAmount = 0;
+    let lineDiscountsTotal = 0;
     let maxExcessPoints = 0;
     let sumExcessPoints = 0;
     const reasons: string[] = [];
+
+    const tierCeiling = currentConfig.tierDiscountCeilings[quote.customerTier] ?? 10;
 
     const updatedLines = quote.lines.map(line => {
       const prod = products.find(p => p.id === line.productId);
@@ -173,8 +246,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const qty = line.quantity;
       const disc = Math.max(0, Math.min(100, line.discountPercent));
 
-      // Ceiling is minimum of customer tier ceiling and category ceiling
-      const ceiling = Math.min(quote.customerTier === 'GOLD' ? 15 : quote.customerTier === 'SILVER' ? 10 : quote.customerTier === 'PLATINUM' ? 20 : 5, prod ? prod.categoryDiscountCeiling : 10);
+      // Category ceiling from governance configuration
+      const catCeiling = currentConfig.categoryDiscountCeilings[line.category] ?? (prod ? prod.categoryDiscountCeiling : 10);
+      // Stricter (minimum) of customer tier ceiling and category ceiling wins
+      const ceiling = Math.min(tierCeiling, catCeiling);
       const excess = Math.max(0, disc - ceiling);
 
       if (excess > 0) {
@@ -189,50 +264,73 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const costLine = unitCost * qty;
       const lineMargin = netLine > 0 ? ((netLine - costLine) / netLine) * 100 : 0;
 
-      subtotal += netLine;
+      grossSubtotal += grossLine;
+      subtotalBeforeOrderDiscount += netLine;
       totalCost += costLine;
-      totalDiscountAmount += discAmount;
-
-      const taxRate = prod ? prod.taxRate : 0.08;
-      taxAmount += netLine * taxRate;
+      lineDiscountsTotal += discAmount;
 
       return {
         ...line,
         allowedDiscountCeiling: ceiling,
-        discountExcessPercent: excess,
+        discountExcessPercent: Math.round(excess * 10) / 10,
         lineTotal: Math.round(netLine * 100) / 100,
         marginPercent: Math.round(lineMargin * 10) / 10
       };
     });
 
-    const totalAmount = subtotal + taxAmount;
-    const blendedMargin = subtotal > 0 ? ((subtotal - totalCost) / subtotal) * 100 : 0;
+    // Order-level discount calculation (Bug B fix)
+    const orderDiscountPercent = Math.max(0, Math.min(100, quote.orderDiscountPercent || 0));
+    const orderDiscountAmount = subtotalBeforeOrderDiscount * (orderDiscountPercent / 100);
+    const netSubtotal = Math.max(0, subtotalBeforeOrderDiscount - orderDiscountAmount);
+    const totalDiscountAmount = lineDiscountsTotal + orderDiscountAmount;
+
+    if (orderDiscountPercent > 0) {
+      if (orderDiscountPercent > tierCeiling) {
+        const orderExcess = orderDiscountPercent - tierCeiling;
+        maxExcessPoints = Math.max(maxExcessPoints, orderExcess);
+        sumExcessPoints += orderExcess;
+        reasons.push(`Order discount (${orderDiscountPercent}%) exceeds ${quote.customerTier} tier limit (${tierCeiling}%) by +${orderExcess.toFixed(1)}%`);
+      } else {
+        reasons.push(`Order discount of ${orderDiscountPercent}% applied to net total.`);
+      }
+    }
+
+    // Standard 8% estimated tax
+    const taxAmount = Math.round(netSubtotal * 0.08 * 100) / 100;
+    const totalAmount = Math.round((netSubtotal + taxAmount) * 100) / 100;
+    const blendedMargin = netSubtotal > 0 ? ((netSubtotal - totalCost) / netSubtotal) * 100 : 0;
 
     // Blended risk score calculation (0 to 100)
-    // Formula combines:
-    // 1) Maximum single line violation
-    // 2) Aggregate pattern of small violations across multiple lines
-    // 3) Low margin penalty
     let riskScore = 15; // Base healthy score
     if (sumExcessPoints > 0) {
       riskScore += Math.round(maxExcessPoints * 3.5 + (sumExcessPoints - maxExcessPoints) * 2.0);
     }
-    if (blendedMargin < 25) {
-      riskScore += 18;
-      reasons.push(`Blended deal margin (${blendedMargin.toFixed(1)}%) is below recommended 25% guideline.`);
-    } else if (blendedMargin < 35) {
-      riskScore += 8;
+    if (orderDiscountPercent > 0) {
+      riskScore += Math.round(orderDiscountPercent * 2.5);
+    }
+
+    if (blendedMargin > 0 && blendedMargin < currentConfig.minCorporateMarginFloor) {
+      riskScore += 22;
+      reasons.push(`Blended margin (${blendedMargin.toFixed(1)}%) is below corporate safety floor (${currentConfig.minCorporateMarginFloor}%).`);
+    } else if (blendedMargin > 0 && blendedMargin < currentConfig.minCorporateMarginFloor + 8) {
+      riskScore += 10;
     }
     riskScore = Math.min(98, Math.max(10, riskScore));
 
-    const riskStatus = riskScore >= 70 ? 'HIGH_RISK' : riskScore >= 45 ? 'MODERATE' : 'HEALTHY';
-    const approvalRequired = riskScore >= 45;
-    const requiredApprovalLevel = riskScore >= 70 ? 'MANAGER_AND_FINANCE' : riskScore >= 45 ? 'SALES_MANAGER' : 'NONE';
+    const managerThreshold = currentConfig.managerApprovalRiskThreshold;
+    const financeThreshold = currentConfig.financeApprovalRiskThreshold;
 
-    if (riskScore >= 70) {
-      reasons.push('Blended risk exceeds 70: triggers sequential 2-tier approval (Sales Manager -> Finance).');
-    } else if (riskScore >= 45) {
-      reasons.push('Blended risk exceeds 45: requires Sales Manager approval.');
+    const riskStatus: 'HEALTHY' | 'MODERATE' | 'HIGH_RISK' = 
+      riskScore >= financeThreshold ? 'HIGH_RISK' : riskScore >= managerThreshold ? 'MODERATE' : 'HEALTHY';
+    
+    const approvalRequired = riskScore >= managerThreshold;
+    const requiredApprovalLevel: ApprovalLevel = 
+      riskScore >= financeThreshold ? 'MANAGER_AND_FINANCE' : riskScore >= managerThreshold ? 'SALES_MANAGER' : 'NONE';
+
+    if (riskScore >= financeThreshold) {
+      reasons.push(`Blended risk (${riskScore}) exceeds Finance threshold (${financeThreshold}): requires sequential 2-tier approval (Manager → Finance).`);
+    } else if (riskScore >= managerThreshold) {
+      reasons.push(`Blended risk (${riskScore}) exceeds Manager threshold (${managerThreshold}): requires Sales Manager sign-off.`);
     } else {
       reasons.push('All parameters within standard limits. No approval required.');
     }
@@ -240,10 +338,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return {
       ...quote,
       lines: updatedLines,
-      subtotal: Math.round(subtotal * 100) / 100,
+      orderDiscountPercent,
+      subtotal: Math.round(netSubtotal * 100) / 100,
       totalDiscountAmount: Math.round(totalDiscountAmount * 100) / 100,
-      taxAmount: Math.round(taxAmount * 100) / 100,
-      totalAmount: Math.round(totalAmount * 100) / 100,
+      taxAmount,
+      totalAmount,
       totalCost: Math.round(totalCost * 100) / 100,
       blendedMarginPercent: Math.round(blendedMargin * 10) / 10,
       blendedRiskScore: riskScore,
@@ -253,6 +352,67 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       requiredApprovalLevel,
       updatedAt: new Date().toISOString()
     };
+  };
+
+  // Create new Quotation (Bug C fix)
+  const createNewQuotation = (customerId?: string): string => {
+    let maxNumber = 1051;
+    quotations.forEach(q => {
+      const match = q.quoteNumber.match(/Q-(\d+)/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNumber) maxNumber = num;
+      }
+    });
+    const nextNum = maxNumber + 1;
+    const quoteNumber = `Q-${nextNum}`;
+    const quoteId = `q-${nextNum}`;
+
+    const targetCust = customers.find(c => c.id === customerId) || customers[0];
+
+    const newQuote: Quotation = {
+      id: quoteId,
+      quoteNumber,
+      customerId: targetCust.id,
+      customerName: targetCust.name,
+      customerTier: targetCust.tier,
+      salesRepId: currentUser.id,
+      salesRepName: currentUser.name || 'Sarah Chen',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      stage: 'DRAFT',
+      lines: [],
+      orderDiscountPercent: 0,
+      subtotal: 0,
+      totalDiscountAmount: 0,
+      taxAmount: 0,
+      totalAmount: 0,
+      totalCost: 0,
+      blendedMarginPercent: 0,
+      blendedRiskScore: 10,
+      riskStatus: 'HEALTHY',
+      riskReasons: ['New draft quotation. Parameters initialized.'],
+      approvalRequired: false,
+      requiredApprovalLevel: 'NONE'
+    };
+
+    const newAudit: AuditLog = {
+      id: `aud-${Date.now()}`,
+      entityType: 'QUOTATION',
+      entityId: quoteId,
+      userName: currentUser.name,
+      userRole: currentUser.title || currentUser.role,
+      action: 'CREATED_QUOTATION',
+      timestamp: new Date().toISOString(),
+      details: `Created draft quotation ${quoteNumber} for ${targetCust.name}.`
+    };
+
+    setQuotations(prev => [newQuote, ...prev]);
+    setAuditLogs(prev => [newAudit, ...prev]);
+    setSelectedQuoteId(quoteId);
+    setCurrentPage('quote-builder');
+    showNotification(`Created draft quotation ${quoteNumber} for ${targetCust.name}`, 'success');
+    return quoteId;
   };
 
   const updateLineQuantity = (lineId: string, delta: number) => {
@@ -265,8 +425,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         return line;
       });
-      const recalculated = recalculateHelper({ ...q, lines: updatedLines });
-      return recalculated;
+      return recalculateHelper({ ...q, lines: updatedLines });
     }));
   };
 
@@ -279,9 +438,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
         return line;
       });
-      const recalculated = recalculateHelper({ ...q, lines: updatedLines });
+      return recalculateHelper({ ...q, lines: updatedLines });
+    }));
+  };
+
+  const updateOrderDiscount = (quoteId: string, discountPercent: number) => {
+    setQuotations(prev => prev.map(q => {
+      if (q.id !== quoteId) return q;
+      const recalculated = recalculateHelper({
+        ...q,
+        orderDiscountPercent: Math.max(0, Math.min(100, discountPercent))
+      });
       return recalculated;
     }));
+
+    const auditEntry: AuditLog = {
+      id: `aud-${Date.now()}`,
+      entityType: 'QUOTATION',
+      entityId: quoteId,
+      userName: currentUser.name,
+      userRole: currentUser.title || currentUser.role,
+      action: 'UPDATED_ORDER_DISCOUNT',
+      timestamp: new Date().toISOString(),
+      details: `Order discount adjusted to ${discountPercent}%. Margin & governance risk recalculated.`
+    };
+    setAuditLogs(prev => [auditEntry, ...prev]);
+  };
+
+  const updateActiveQuoteCustomer = (customerId: string) => {
+    const cust = customers.find(c => c.id === customerId);
+    if (!cust) return;
+
+    setQuotations(prev => prev.map(q => {
+      if (q.id !== selectedQuoteId) return q;
+      const updatedQuote = recalculateHelper({
+        ...q,
+        customerId: cust.id,
+        customerName: cust.name,
+        customerTier: cust.tier
+      });
+      return updatedQuote;
+    }));
+
+    showNotification(`Assigned quotation to ${cust.name} (${cust.tier} Tier)`, 'info');
   };
 
   const addProductToActiveQuote = (productId: string) => {
@@ -313,18 +512,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
         updatedLines = [...q.lines, newLine];
       }
-      const recalculated = recalculateHelper({ ...q, lines: updatedLines });
-      return recalculated;
+      return recalculateHelper({ ...q, lines: updatedLines });
     }));
+
+    const auditEntry: AuditLog = {
+      id: `aud-${Date.now()}`,
+      entityType: 'QUOTATION',
+      entityId: selectedQuoteId,
+      userName: currentUser.name,
+      userRole: currentUser.title || currentUser.role,
+      action: 'ADDED_PRODUCT_LINE',
+      timestamp: new Date().toISOString(),
+      details: `Added ${prod.name} (${prod.category}) at $${prod.unitPrice}.`
+    };
+    setAuditLogs(prev => [auditEntry, ...prev]);
+
     showNotification(`Added ${prod.name} to Quotation ${activeQuotation.quoteNumber}`, 'success');
   };
 
   const removeLineFromQuote = (lineId: string) => {
+    const quote = activeQuotation;
+    const removedLine = quote?.lines.find(l => l.id === lineId);
+
     setQuotations(prev => prev.map(q => {
       if (q.id !== selectedQuoteId) return q;
       const updatedLines = q.lines.filter(l => l.id !== lineId);
       return recalculateHelper({ ...q, lines: updatedLines });
     }));
+
+    if (removedLine) {
+      const auditEntry: AuditLog = {
+        id: `aud-${Date.now()}`,
+        entityType: 'QUOTATION',
+        entityId: selectedQuoteId,
+        userName: currentUser.name,
+        userRole: currentUser.title || currentUser.role,
+        action: 'REMOVED_PRODUCT_LINE',
+        timestamp: new Date().toISOString(),
+        details: `Removed line: ${removedLine.productName}.`
+      };
+      setAuditLogs(prev => [auditEntry, ...prev]);
+    }
+
     showNotification(`Removed product line from quotation`, 'info');
   };
 
@@ -344,41 +573,91 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (q.id !== selectedQuoteId) return q;
       return recalculateHelper(q);
     }));
-    showNotification(`Deal terms and margin recalculated with backend governance rules`, 'info');
+    showNotification(`Deal terms and margin recalculated with mock governance engine`, 'info');
   };
 
+  const saveDraftQuote = () => {
+    setQuotations(prev => prev.map(q => {
+      if (q.id !== selectedQuoteId) return q;
+      return {
+        ...q,
+        updatedAt: new Date().toISOString()
+      };
+    }));
+
+    const auditEntry: AuditLog = {
+      id: `aud-${Date.now()}`,
+      entityType: 'QUOTATION',
+      entityId: selectedQuoteId,
+      userName: currentUser.name,
+      userRole: currentUser.title || currentUser.role,
+      action: 'SAVED_DRAFT',
+      timestamp: new Date().toISOString(),
+      details: 'Draft state saved to mock database store.'
+    };
+    setAuditLogs(prev => [auditEntry, ...prev]);
+
+    showNotification(`Draft for ${activeQuotation.quoteNumber} saved successfully.`, 'success');
+  };
+
+  const sendQuoteToCustomer = () => {
+    setQuotations(prev => prev.map(q => {
+      if (q.id !== selectedQuoteId) return q;
+      return {
+        ...q,
+        stage: 'SENT',
+        updatedAt: new Date().toISOString()
+      };
+    }));
+
+    const auditEntry: AuditLog = {
+      id: `aud-${Date.now()}`,
+      entityType: 'QUOTATION',
+      entityId: selectedQuoteId,
+      userName: currentUser.name,
+      userRole: currentUser.title || currentUser.role,
+      action: 'SENT_TO_CUSTOMER',
+      timestamp: new Date().toISOString(),
+      details: `Dispatched quotation proposal ${activeQuotation.quoteNumber} to customer portal.`
+    };
+    setAuditLogs(prev => [auditEntry, ...prev]);
+
+    showNotification(`Sent Quotation ${activeQuotation.quoteNumber} to customer portal!`, 'success');
+  };
+
+  // Submit active quote for approval with sequential step routing
   const submitActiveQuoteForApproval = () => {
     const current = activeQuotation;
     const recalculated = recalculateHelper(current);
 
     if (recalculated.approvalRequired) {
-      const steps = [];
+      const steps: ApprovalStep[] = [];
       if (recalculated.requiredApprovalLevel === 'MANAGER_AND_FINANCE') {
         steps.push(
           {
             id: `step-${Date.now()}-1`,
             stepNumber: 1,
-            roleRequired: 'SALES_MANAGER' as const,
+            roleRequired: 'SALES_MANAGER',
             reviewerName: 'Marcus Vance',
-            status: 'PENDING' as const,
+            status: 'PENDING',
             comment: 'Awaiting Manager review for discount ceiling violation.'
           },
           {
             id: `step-${Date.now()}-2`,
             stepNumber: 2,
-            roleRequired: 'FINANCE_OPERATIONS' as const,
+            roleRequired: 'FINANCE_OPERATIONS',
             reviewerName: 'Elena Rostova',
-            status: 'PENDING' as const,
-            comment: 'Awaiting secondary Finance review for high blended risk score.'
+            status: 'PENDING',
+            comment: `Awaiting secondary Finance review because risk score (${recalculated.blendedRiskScore}) exceeds threshold.`
           }
         );
       } else {
         steps.push({
           id: `step-${Date.now()}-1`,
           stepNumber: 1,
-          roleRequired: 'SALES_MANAGER' as const,
+          roleRequired: 'SALES_MANAGER',
           reviewerName: 'Marcus Vance',
-          status: 'PENDING' as const,
+          status: 'PENDING',
           comment: 'Standard manager discount approval.'
         });
       }
@@ -400,10 +679,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             entityType: 'QUOTATION',
             entityId: recalculated.id,
             userName: currentUser.name,
-            userRole: currentUser.role,
+            userRole: currentUser.title || currentUser.role,
             action: 'SUBMITTED_FOR_APPROVAL',
             timestamp: new Date().toISOString(),
-            reason: 'Automated approval routing triggered by backend governance.'
+            reason: 'Automated approval routing triggered by mock governance engine.'
           }
         ]
       };
@@ -415,6 +694,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         currentApprovalStep: 'MANAGER'
       } : q));
 
+      const auditEntry: AuditLog = {
+        id: `aud-${Date.now()}`,
+        entityType: 'APPROVAL',
+        entityId: newApproval.id,
+        userName: currentUser.name,
+        userRole: currentUser.title || currentUser.role,
+        action: 'SUBMITTED_FOR_APPROVAL',
+        timestamp: new Date().toISOString(),
+        details: `Quotation routed to ${recalculated.requiredApprovalLevel === 'MANAGER_AND_FINANCE' ? 'Manager → Finance (2 tiers)' : 'Sales Manager (Tier 1)'}.`
+      };
+      setAuditLogs(prev => [auditEntry, ...prev]);
+
       showNotification(`Quotation ${recalculated.quoteNumber} routed to Approval Center (${recalculated.requiredApprovalLevel === 'MANAGER_AND_FINANCE' ? 'Manager → Finance' : 'Manager'})`, 'warning');
     } else {
       setQuotations(prev => prev.map(q => q.id === current.id ? { 
@@ -422,13 +713,67 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         stage: 'APPROVED',
         currentApprovalStep: 'COMPLETED'
       } : q));
+
+      const auditEntry: AuditLog = {
+        id: `aud-${Date.now()}`,
+        entityType: 'QUOTATION',
+        entityId: recalculated.id,
+        userName: 'Governance Engine',
+        userRole: 'Automated Evaluator',
+        action: 'AUTO_APPROVED',
+        timestamp: new Date().toISOString(),
+        details: 'All commercial parameters within standard discount ceilings. Approval bypassed.'
+      };
+      setAuditLogs(prev => [auditEntry, ...prev]);
+
       showNotification(`Quotation ${recalculated.quoteNumber} meets all discount ceilings. Auto-approved!`, 'success');
     }
   };
 
   const confirmActiveQuote = () => {
-    setQuotations(prev => prev.map(q => q.id === selectedQuoteId ? { ...q, stage: 'CONFIRMED' } : q));
-    showNotification(`Quotation ${activeQuotation.quoteNumber} confirmed and converted to active Order! Ready for fulfillment.`, 'success');
+    const q = activeQuotation;
+    setQuotations(prev => prev.map(item => item.id === selectedQuoteId ? { ...item, stage: 'CONFIRMED' } : item));
+
+    // Ensure a fulfillment entry exists for this confirmed quote
+    const orderKey = `ord-${q.quoteNumber.replace('Q-', '')}`;
+    if (!fulfillments[orderKey]) {
+      const newFulfillment: OrderFulfillment = {
+        orderId: orderKey,
+        quotationId: q.id,
+        quoteNumber: q.quoteNumber,
+        customerName: q.customerName,
+        status: 'SUGGESTED',
+        allocations: q.lines.filter(l => !l.isSubscription).map(l => ({
+          warehouseId: 'wh-1',
+          warehouseName: 'Main Distribution Center (Chicago)',
+          productId: l.productId,
+          productName: l.productName,
+          quantityAllocated: l.quantity,
+          estimatedShipments: 1,
+          estimatedCost: 350
+        })),
+        totalShipments: 1,
+        totalShippingCost: 350,
+        backorderQuantity: 0,
+        backorderProductNames: [],
+        consolidationAvailable: false
+      };
+      setFulfillments(prev => ({ ...prev, [orderKey]: newFulfillment }));
+    }
+
+    const auditEntry: AuditLog = {
+      id: `aud-${Date.now()}`,
+      entityType: 'QUOTATION',
+      entityId: selectedQuoteId,
+      userName: currentUser.name,
+      userRole: currentUser.title || currentUser.role,
+      action: 'CONFIRMED_DEAL',
+      timestamp: new Date().toISOString(),
+      details: `Commercial order confirmed. Converted to active fulfillment & billing streams.`
+    };
+    setAuditLogs(prev => [auditEntry, ...prev]);
+
+    showNotification(`Quotation ${q.quoteNumber} confirmed and converted to active Order! Ready for fulfillment.`, 'success');
   };
 
   // Approvals Actions
@@ -443,6 +788,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedSteps[currentStepIdx] = {
         ...updatedSteps[currentStepIdx],
         status: 'APPROVED',
+        reviewerName: currentUser.name,
+        reviewerId: currentUser.id,
         comment,
         decidedAt: new Date().toISOString()
       };
@@ -455,11 +802,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         entityType: 'APPROVAL',
         entityId: app.id,
         userName: currentUser.name,
-        userRole: currentUser.title,
+        userRole: currentUser.title || currentUser.role,
         action: 'APPROVED_STEP',
         timestamp: new Date().toISOString(),
         reason: comment,
-        details: `Step ${currentStepIdx + 1} (${updatedSteps[currentStepIdx].roleRequired}) approved.`
+        details: `Step ${currentStepIdx + 1} (${updatedSteps[currentStepIdx].roleRequired}) approved by ${currentUser.name}.`
       };
 
       if (!hasMoreSteps) {
@@ -468,6 +815,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ...q,
           stage: 'APPROVED',
           currentApprovalStep: 'COMPLETED'
+        } : q));
+      } else {
+        // Advance to next sequential role
+        const nextRole = updatedSteps[currentStepIdx + 1].roleRequired;
+        setQuotations(qPrev => qPrev.map(q => q.id === app.quotationId ? {
+          ...q,
+          currentApprovalStep: nextRole === 'FINANCE_OPERATIONS' ? 'FINANCE' : 'MANAGER'
         } : q));
       }
 
@@ -479,13 +833,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }));
 
+    const globalAudit: AuditLog = {
+      id: `aud-${Date.now()}`,
+      entityType: 'APPROVAL',
+      entityId: approvalId,
+      userName: currentUser.name,
+      userRole: currentUser.title || currentUser.role,
+      action: 'STEP_APPROVED',
+      timestamp: new Date().toISOString(),
+      reason: comment
+    };
+    setAuditLogs(prev => [globalAudit, ...prev]);
+
     showNotification(`Approval step recorded successfully.`, 'success');
   };
 
   const rejectApproval = (approvalId: string, reason: string) => {
     setApprovals(prev => prev.map(app => {
       if (app.id !== approvalId) return app;
-      const updatedSteps = app.steps.map(s => s.status === 'PENDING' ? { ...s, status: 'REJECTED' as const, comment: reason, decidedAt: new Date().toISOString() } : s);
+      const updatedSteps = app.steps.map(s => s.status === 'PENDING' ? { 
+        ...s, 
+        status: 'REJECTED' as const, 
+        reviewerName: currentUser.name,
+        reviewerId: currentUser.id,
+        comment: reason, 
+        decidedAt: new Date().toISOString() 
+      } : s);
       
       setQuotations(qPrev => qPrev.map(q => q.id === app.quotationId ? {
         ...q,
@@ -502,7 +875,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             entityType: 'APPROVAL',
             entityId: app.id,
             userName: currentUser.name,
-            userRole: currentUser.title,
+            userRole: currentUser.title || currentUser.role,
             action: 'REJECTED_QUOTATION',
             timestamp: new Date().toISOString(),
             reason
@@ -511,13 +884,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ]
       };
     }));
+
+    const globalAudit: AuditLog = {
+      id: `aud-${Date.now()}`,
+      entityType: 'APPROVAL',
+      entityId: approvalId,
+      userName: currentUser.name,
+      userRole: currentUser.title || currentUser.role,
+      action: 'REJECTED_QUOTATION',
+      timestamp: new Date().toISOString(),
+      reason
+    };
+    setAuditLogs(prev => [globalAudit, ...prev]);
+
     showNotification(`Quotation rejected. Notice sent to sales representative.`, 'error');
   };
 
   const returnForRevision = (approvalId: string, reason: string) => {
     setApprovals(prev => prev.map(app => {
       if (app.id !== approvalId) return app;
-      const updatedSteps = app.steps.map(s => s.status === 'PENDING' ? { ...s, status: 'REVISION_REQUESTED' as const, comment: reason, decidedAt: new Date().toISOString() } : s);
+      const updatedSteps = app.steps.map(s => s.status === 'PENDING' ? { 
+        ...s, 
+        status: 'REVISION_REQUESTED' as const, 
+        reviewerName: currentUser.name,
+        reviewerId: currentUser.id,
+        comment: reason, 
+        decidedAt: new Date().toISOString() 
+      } : s);
       
       setQuotations(qPrev => qPrev.map(q => q.id === app.quotationId ? {
         ...q,
@@ -534,7 +927,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             entityType: 'APPROVAL',
             entityId: app.id,
             userName: currentUser.name,
-            userRole: currentUser.title,
+            userRole: currentUser.title || currentUser.role,
             action: 'RETURNED_FOR_REVISION',
             timestamp: new Date().toISOString(),
             reason
@@ -543,6 +936,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ]
       };
     }));
+
+    const globalAudit: AuditLog = {
+      id: `aud-${Date.now()}`,
+      entityType: 'APPROVAL',
+      entityId: approvalId,
+      userName: currentUser.name,
+      userRole: currentUser.title || currentUser.role,
+      action: 'RETURNED_FOR_REVISION',
+      timestamp: new Date().toISOString(),
+      reason
+    };
+    setAuditLogs(prev => [globalAudit, ...prev]);
+
     showNotification(`Returned quotation to rep for revision with reason logged.`, 'warning');
   };
 
@@ -559,6 +965,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       };
     });
+
+    const auditEntry: AuditLog = {
+      id: `aud-${Date.now()}`,
+      entityType: 'FULFILLMENT',
+      entityId: orderId,
+      userName: currentUser.name,
+      userRole: currentUser.title || currentUser.role,
+      action: 'ACCEPTED_WAREHOUSE_SPLIT',
+      timestamp: new Date().toISOString(),
+      details: 'Operations accepted automated warehouse split recommendation.'
+    };
+    setAuditLogs(prev => [auditEntry, ...prev]);
+
     showNotification(`Recommended warehouse allocation accepted! Pick & pack manifests generated.`, 'success');
   };
 
@@ -575,6 +994,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       };
     });
+
+    const auditEntry: AuditLog = {
+      id: `aud-${Date.now()}`,
+      entityType: 'FULFILLMENT',
+      entityId: orderId,
+      userName: currentUser.name,
+      userRole: currentUser.title || currentUser.role,
+      action: 'OVERRODE_WAREHOUSE_ALLOCATION',
+      timestamp: new Date().toISOString(),
+      details: 'Manual override committed to fulfillment allocation.'
+    };
+    setAuditLogs(prev => [auditEntry, ...prev]);
+
     showNotification(`Warehouse allocation manually overridden and logged to audit trail.`, 'info');
   };
 
@@ -593,6 +1025,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       };
     });
+
+    const auditEntry: AuditLog = {
+      id: `aud-${Date.now()}`,
+      entityType: 'FULFILLMENT',
+      entityId: orderId,
+      userName: currentUser.name,
+      userRole: currentUser.title || currentUser.role,
+      action: 'CONSOLIDATED_BACKORDER',
+      timestamp: new Date().toISOString(),
+      details: 'Consolidated backordered quantity from newly replenished stock. Order fully dispatched.'
+    };
+    setAuditLogs(prev => [auditEntry, ...prev]);
+
     showNotification(`Backordered units consolidated from newly arrived stock. Order is now fully fulfilled!`, 'success');
   };
 
@@ -608,7 +1053,63 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         status: newStatus
       };
     }));
+
+    const auditEntry: AuditLog = {
+      id: `aud-${Date.now()}`,
+      entityType: 'BILLING',
+      entityId: invoiceId,
+      userName: currentUser.name,
+      userRole: currentUser.title || currentUser.role,
+      action: 'RECORDED_PAYMENT',
+      timestamp: new Date().toISOString(),
+      details: `Recorded payment of $${amount.toLocaleString()} against invoice ${invoiceId}.`
+    };
+    setAuditLogs(prev => [auditEntry, ...prev]);
+
     showNotification(`Payment of $${amount.toLocaleString()} recorded. Invoice status updated!`, 'success');
+  };
+
+  const issueCreditNote = (invoiceId: string, amount: number, reason: string) => {
+    const targetInv = invoices.find(i => i.id === invoiceId);
+    if (!targetInv) return;
+
+    const creditInv: Invoice = {
+      id: `inv-cn-${Date.now()}`,
+      invoiceNumber: `CN-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+      orderId: targetInv.orderId,
+      customerName: targetInv.customerName,
+      type: 'CREDIT_NOTE',
+      amount: amount,
+      paidAmount: amount,
+      status: 'PAID',
+      dueDate: new Date().toISOString().split('T')[0],
+      issuedAt: new Date().toISOString().split('T')[0]
+    };
+
+    setInvoices(prev => [creditInv, ...prev.map(inv => {
+      if (inv.id !== invoiceId) return inv;
+      const newPaid = Math.min(inv.amount, inv.paidAmount + amount);
+      return {
+        ...inv,
+        paidAmount: newPaid,
+        status: newPaid >= inv.amount ? 'PAID' : 'PARTIALLY_PAID'
+      };
+    })]);
+
+    const auditEntry: AuditLog = {
+      id: `aud-${Date.now()}`,
+      entityType: 'BILLING',
+      entityId: invoiceId,
+      userName: currentUser.name,
+      userRole: currentUser.title || currentUser.role,
+      action: 'ISSUED_CREDIT_NOTE',
+      timestamp: new Date().toISOString(),
+      reason,
+      details: `Credit note ${creditInv.invoiceNumber} of $${amount.toLocaleString()} issued against ${targetInv.invoiceNumber}.`
+    };
+    setAuditLogs(prev => [auditEntry, ...prev]);
+
+    showNotification(`Credit note ${creditInv.invoiceNumber} ($${amount.toLocaleString()}) issued & reconciled!`, 'success');
   };
 
   const modifySubscription = (subId: string, deltaQty: number) => {
@@ -617,7 +1118,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const newQty = Math.max(1, sub.quantity + deltaQty);
       const unitRate = sub.amount / sub.quantity;
       const newAmount = unitRate * newQty;
-      const proration = deltaQty * (unitRate * 0.45); // Proration calculation
+      const proration = deltaQty * (unitRate * 0.45);
       return {
         ...sub,
         quantity: newQty,
@@ -625,15 +1126,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         prorationApplied: Math.round(proration)
       };
     }));
+
+    const auditEntry: AuditLog = {
+      id: `aud-${Date.now()}`,
+      entityType: 'BILLING',
+      entityId: subId,
+      userName: currentUser.name,
+      userRole: currentUser.title || currentUser.role,
+      action: 'MODIFIED_SUBSCRIPTION',
+      timestamp: new Date().toISOString(),
+      details: `Subscription adjusted by ${deltaQty > 0 ? '+' : ''}${deltaQty} unit(s) with mid-cycle proration.`
+    };
+    setAuditLogs(prev => [auditEntry, ...prev]);
+
     showNotification(`Subscription updated with mid-cycle proration adjustment.`, 'info');
   };
 
-  // Customer Portal Negotiation
-  const submitCustomerNegotiation = (quoteId: string, counterDiscount: number, notes: string) => {
+  // Customer Portal Line Comments (Bug Q fix)
+  const addLineComment = (quoteId: string, lineId: string, comment: string, authorName?: string) => {
+    setQuotations(prev => prev.map(q => {
+      if (q.id !== quoteId) return q;
+      const updatedLines = q.lines.map(line => {
+        if (line.id === lineId) {
+          const prevComments = line.comments || [];
+          return {
+            ...line,
+            comments: [...prevComments, `${authorName || currentUser.name}: ${comment}`]
+          };
+        }
+        return line;
+      });
+      return { ...q, lines: updatedLines, updatedAt: new Date().toISOString() };
+    }));
+
+    showNotification(`Comment added to line item.`, 'info');
+  };
+
+  // Customer Portal Negotiation with Automatic Sequential Re-Approval (Bug H fix)
+  const submitCustomerNegotiation = (
+    quoteId: string, 
+    counterDiscount: number, 
+    notes: string,
+    lineComments?: { lineId: string; comment: string; productName?: string }[]
+  ) => {
+    let createdApp: ApprovalInstance | null = null;
+
     setQuotations(prev => prev.map(q => {
       if (q.id !== quoteId) return q;
 
-      // Apply counter discount to the primary product line
+      // Apply counter discount to primary line
       const updatedLines = q.lines.map((l, idx) => {
         if (idx === 0) {
           return { ...l, discountPercent: counterDiscount };
@@ -644,17 +1185,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const recalculated = recalculateHelper({
         ...q,
         lines: updatedLines,
-        stage: 'UNDER_NEGOTIATION'
+        stage: 'UNDER_NEGOTIATION',
+        hasActiveNegotiation: true
       });
 
-      // If customer requested discount pushes quotation beyond approval thresholds,
-      // backend automatically re-enters approval workflow!
+      // If counter-proposal breaches approval thresholds, auto-route
       if (recalculated.approvalRequired) {
         recalculated.stage = 'PENDING_APPROVAL';
         recalculated.currentApprovalStep = 'MANAGER';
 
-        // create new approval instance for re-approval
-        const newApp: ApprovalInstance = {
+        const steps: ApprovalStep[] = [];
+        // Sequential 2-tier approval if high risk!
+        if (recalculated.requiredApprovalLevel === 'MANAGER_AND_FINANCE') {
+          steps.push(
+            {
+              id: `step-re-${Date.now()}-1`,
+              stepNumber: 1,
+              roleRequired: 'SALES_MANAGER',
+              reviewerName: 'Marcus Vance',
+              status: 'PENDING',
+              comment: `Customer counter-offer: requested ${counterDiscount}% discount.`
+            },
+            {
+              id: `step-re-${Date.now()}-2`,
+              stepNumber: 2,
+              roleRequired: 'FINANCE_OPERATIONS',
+              reviewerName: 'Elena Rostova',
+              status: 'PENDING',
+              comment: `Tier 2 Finance review required: negotiated risk (${recalculated.blendedRiskScore}) exceeds threshold.`
+            }
+          );
+        } else {
+          steps.push({
+            id: `step-re-${Date.now()}-1`,
+            stepNumber: 1,
+            roleRequired: 'SALES_MANAGER',
+            reviewerName: 'Marcus Vance',
+            status: 'PENDING',
+            comment: `Customer counter-offer: requested ${counterDiscount}% discount.`
+          });
+        }
+
+        createdApp = {
           id: `app-re-${Date.now()}`,
           quotationId: recalculated.id,
           quoteNumber: recalculated.quoteNumber,
@@ -662,42 +1234,179 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           amount: recalculated.totalAmount,
           riskScore: recalculated.blendedRiskScore,
           status: 'PENDING',
-          steps: [
-            {
-              id: `step-re-1`,
-              stepNumber: 1,
-              roleRequired: 'SALES_MANAGER',
-              reviewerName: 'Marcus Vance',
-              status: 'PENDING',
-              comment: `Re-approval required: Customer requested ${counterDiscount}% counter-discount.`
-            }
-          ],
+          steps,
           submittedAt: new Date().toISOString(),
-          reasons: [`Customer portal counter-offer (${counterDiscount}%) exceeds standard tier ceiling.`],
+          reasons: recalculated.riskReasons,
           auditTimeline: [
             {
               id: `aud-neg-${Date.now()}`,
               entityType: 'NEGOTIATION',
               entityId: q.id,
-              userName: 'David Kross (Customer)',
-              userRole: 'Customer Portal User',
+              userName: currentUser.name || 'David Kross (Customer)',
+              userRole: 'Customer Portal',
               action: 'SUBMITTED_COUNTER_PROPOSAL',
               timestamp: new Date().toISOString(),
-              reason: notes
+              reason: notes,
+              details: `Customer requested ${counterDiscount}% discount. Triggered automatic re-approval.`
             }
           ]
         };
-        setApprovals(aPrev => [newApp, ...aPrev]);
       }
 
       return recalculated;
     }));
 
+    if (createdApp) {
+      setApprovals(aPrev => [createdApp!, ...aPrev]);
+    }
+
+    const newNeg: NegotiationRequest = {
+      id: `neg-${Date.now()}`,
+      quotationId: quoteId,
+      customerName: activeQuotation?.customerName || 'Customer Account',
+      requestedDiscountPercent: counterDiscount,
+      notes,
+      status: 'PENDING_REVIEW',
+      createdAt: new Date().toISOString(),
+      lineComments: lineComments || []
+    };
+    setNegotiations(prev => [newNeg, ...prev.filter(n => n.quotationId !== quoteId)]);
+
+    const auditEntry: AuditLog = {
+      id: `aud-${Date.now()}`,
+      entityType: 'NEGOTIATION',
+      entityId: quoteId,
+      userName: currentUser.name,
+      userRole: 'Customer Portal',
+      action: 'SUBMITTED_COUNTER_PROPOSAL',
+      timestamp: new Date().toISOString(),
+      reason: notes,
+      details: `Customer proposed ${counterDiscount}% discount.`
+    };
+    setAuditLogs(prev => [auditEntry, ...prev]);
+
     showNotification(`Counter-proposal submitted! The system recalculated risk and routed for re-approval if necessary.`, 'warning');
+  };
+
+  // Sales Rep Negotiation Response Workflow (Bug F fix)
+  const respondToNegotiation = (
+    quoteId: string, 
+    action: 'ACCEPT' | 'COUNTER' | 'DECLINE', 
+    counterDiscount?: number, 
+    repNotes?: string
+  ) => {
+    const quote = quotations.find(q => q.id === quoteId);
+    if (!quote) return;
+
+    const updatedNegStatus = action === 'ACCEPT' ? 'ACCEPTED' : action === 'COUNTER' ? 'COUNTERED' : 'REJECTED';
+
+    setNegotiations(prev => prev.map(n => {
+      if (n.quotationId !== quoteId) return n;
+      return {
+        ...n,
+        status: updatedNegStatus,
+        repResponseNotes: repNotes,
+        counterDiscountPercent: counterDiscount,
+        respondedAt: new Date().toISOString()
+      };
+    }));
+
+    if (action === 'ACCEPT') {
+      setQuotations(prev => prev.map(q => {
+        if (q.id !== quoteId) return q;
+        const recalculated = recalculateHelper({
+          ...q,
+          hasActiveNegotiation: false,
+          stage: q.approvalRequired ? 'PENDING_APPROVAL' : 'APPROVED'
+        });
+        return recalculated;
+      }));
+      showNotification(`Accepted customer terms for ${quote.quoteNumber}.`, 'success');
+    } else if (action === 'COUNTER') {
+      const newDisc = counterDiscount ?? 10;
+      setQuotations(prev => prev.map(q => {
+        if (q.id !== quoteId) return q;
+        const updatedLines = q.lines.map((l, idx) => idx === 0 ? { ...l, discountPercent: newDisc } : l);
+        const recalculated = recalculateHelper({
+          ...q,
+          lines: updatedLines,
+          hasActiveNegotiation: false,
+          stage: 'SENT'
+        });
+        return recalculated;
+      }));
+      showNotification(`Sent counter-proposal (${counterDiscount}%) to customer for ${quote.quoteNumber}.`, 'info');
+    } else {
+      setQuotations(prev => prev.map(q => {
+        if (q.id !== quoteId) return q;
+        return {
+          ...q,
+          hasActiveNegotiation: false,
+          stage: 'SENT'
+        };
+      }));
+      showNotification(`Declined negotiation for ${quote.quoteNumber}. Original terms maintained.`, 'info');
+    }
+
+    const auditEntry: AuditLog = {
+      id: `aud-${Date.now()}`,
+      entityType: 'NEGOTIATION',
+      entityId: quoteId,
+      userName: currentUser.name,
+      userRole: currentUser.title || currentUser.role,
+      action: `REP_${action}_NEGOTIATION`,
+      timestamp: new Date().toISOString(),
+      reason: repNotes,
+      details: `Representative responded with ${action}. Counter: ${counterDiscount !== undefined ? `${counterDiscount}%` : 'N/A'}.`
+    };
+    setAuditLogs(prev => [auditEntry, ...prev]);
   };
 
   const customerConfirmQuote = (quoteId: string) => {
     setQuotations(prev => prev.map(q => q.id === quoteId ? { ...q, stage: 'CONFIRMED' } : q));
+
+    // Ensure a fulfillment entry exists
+    const q = quotations.find(item => item.id === quoteId);
+    if (q) {
+      const orderKey = `ord-${q.quoteNumber.replace('Q-', '')}`;
+      if (!fulfillments[orderKey]) {
+        const newFulfillment: OrderFulfillment = {
+          orderId: orderKey,
+          quotationId: q.id,
+          quoteNumber: q.quoteNumber,
+          customerName: q.customerName,
+          status: 'SUGGESTED',
+          allocations: q.lines.filter(l => !l.isSubscription).map(l => ({
+            warehouseId: 'wh-1',
+            warehouseName: 'Main Distribution Center (Chicago)',
+            productId: l.productId,
+            productName: l.productName,
+            quantityAllocated: l.quantity,
+            estimatedShipments: 1,
+            estimatedCost: 350
+          })),
+          totalShipments: 1,
+          totalShippingCost: 350,
+          backorderQuantity: 0,
+          backorderProductNames: [],
+          consolidationAvailable: false
+        };
+        setFulfillments(prev => ({ ...prev, [orderKey]: newFulfillment }));
+      }
+    }
+
+    const auditEntry: AuditLog = {
+      id: `aud-${Date.now()}`,
+      entityType: 'QUOTATION',
+      entityId: quoteId,
+      userName: currentUser.name,
+      userRole: 'Customer Portal',
+      action: 'CUSTOMER_CONFIRMED_DEAL',
+      timestamp: new Date().toISOString(),
+      details: 'Customer accepted and confirmed commercial deliverables online.'
+    };
+    setAuditLogs(prev => [auditEntry, ...prev]);
+
     showNotification(`Quotation confirmed by customer! Order generated and sent to warehouse fulfillment.`, 'success');
   };
 
@@ -717,6 +1426,78 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showNotification(`Automated escalation nudge sent to ${alert?.ownerName || 'Sales Rep'} for Quotation ${alert?.quoteNumber}`, 'success');
   };
 
+  // Governance Configuration
+  const updateGovernanceConfig = (newConfig: Partial<GovernanceConfig>) => {
+    const updated: GovernanceConfig = {
+      ...governanceConfig,
+      ...newConfig
+    };
+    setGovernanceConfig(updated);
+
+    // Re-evaluate active quotation under new governance
+    setQuotations(prev => prev.map(q => {
+      if (q.id !== selectedQuoteId) return q;
+      return recalculateHelper(q, updated);
+    }));
+
+    const auditEntry: AuditLog = {
+      id: `aud-${Date.now()}`,
+      entityType: 'APPROVAL',
+      entityId: 'gov-config',
+      userName: currentUser.name,
+      userRole: currentUser.title || currentUser.role,
+      action: 'UPDATED_GOVERNANCE_POLICY',
+      timestamp: new Date().toISOString(),
+      details: 'Updated discount ceilings, margin thresholds, or approval policies.'
+    };
+    setAuditLogs(prev => [auditEntry, ...prev]);
+
+    showNotification('Governance policies committed & active quote re-evaluated.', 'success');
+  };
+
+  const resetDemoData = () => {
+    try {
+      localStorage.clear();
+    } catch (e) {
+      console.warn(e);
+    }
+    setCurrentUser(mockUsers[0]);
+    setCurrentPage('dashboard');
+    setSelectedQuoteId('q-1048');
+    setQuotations(mockQuotations);
+    setApprovals(mockApprovals);
+    setFulfillments(mockFulfillments);
+    setSubscriptions(mockSubscriptions);
+    setInvoices(mockInvoices);
+    setDealAlerts(mockDealAlerts);
+    setNegotiations(mockNegotiations);
+    setGovernanceConfig(mockGovernanceConfig);
+    setRecommendations(mockRecommendations);
+    setAuditLogs([
+      {
+        id: 'aud-init-1',
+        entityType: 'QUOTATION',
+        entityId: 'q-1048',
+        userName: 'Sarah Chen',
+        userRole: 'Sales Representative',
+        action: 'RECALCULATED_MARGIN',
+        timestamp: '2026-09-04T16:40:00Z',
+        details: 'Discount governance evaluation flagged 18% services discount exceeding 8% ceiling.'
+      },
+      {
+        id: 'aud-init-2',
+        entityType: 'APPROVAL',
+        entityId: 'app-1',
+        userName: 'System Governance Engine',
+        userRole: 'Automated Rule Evaluator',
+        action: 'AUTO_ROUTED_APPROVAL',
+        timestamp: '2026-09-04T16:45:00Z',
+        reason: 'Blended risk score 72 > 70 threshold triggers sequential Manager -> Finance approval.'
+      }
+    ]);
+    showNotification('Demo seed data reset to pristine initial state.', 'info');
+  };
+
   return (
     <AppContext.Provider value={{
       currentUser,
@@ -726,6 +1507,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setCurrentPage,
       selectedQuoteId,
       setSelectedQuoteId,
+      customers,
       quotations,
       activeQuotation,
       products,
@@ -735,14 +1517,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       invoices,
       dealAlerts,
       recommendations,
+      negotiations,
       auditLogs,
+      governanceConfig,
+      createNewQuotation,
       updateLineQuantity,
       updateLineDiscount,
+      updateOrderDiscount,
+      updateActiveQuoteCustomer,
       addProductToActiveQuote,
       removeLineFromQuote,
       addRecommendationToQuote,
       dismissRecommendation,
       recalculateActiveQuote,
+      saveDraftQuote,
+      sendQuoteToCustomer,
       submitActiveQuoteForApproval,
       confirmActiveQuote,
       approveCurrentStep,
@@ -752,12 +1541,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       overrideAllocation,
       consolidateBackorder,
       recordPayment,
+      issueCreditNote,
       modifySubscription,
       submitCustomerNegotiation,
+      addLineComment,
+      respondToNegotiation,
       customerConfirmQuote,
       acknowledgeAlert,
       resolveAlert,
       triggerAlertNudge,
+      updateGovernanceConfig,
+      resetDemoData,
       notification,
       showNotification,
       isGuideOpen,

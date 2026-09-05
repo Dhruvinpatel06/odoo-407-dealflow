@@ -27,19 +27,36 @@ import {
 import { useApp } from '../../context/AppContext';
 
 export const ReportsView: React.FC = () => {
-  const { showNotification } = useApp();
+  const { showNotification, quotations } = useApp();
 
   const [period, setPeriod] = useState<'today' | 'week' | 'month' | 'quarter'>('month');
   const [selectedRep, setSelectedRep] = useState('ALL');
+  const [selectedTeam, setSelectedTeam] = useState('ALL');
+  const [selectedApprovalStatus, setSelectedApprovalStatus] = useState('ALL');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
 
-  // Realistic mock data for charts
+  // Multiplier for periods
+  const periodMultiplier = period === 'today' ? 0.15 : period === 'week' ? 0.45 : period === 'month' ? 1.0 : 2.8;
+
+  // Filtered quotations based on rep, team, and approval status
+  const filteredQuotes = quotations.filter(q => {
+    if (selectedRep === 'sarah' && q.salesRepName !== 'Sarah Chen') return false;
+    if (selectedRep === 'marcus' && q.salesRepName !== 'Marcus Vance') return false;
+    if (selectedTeam === 'DIRECT' && q.salesRepName !== 'Sarah Chen') return false;
+    if (selectedTeam === 'COMMERCIAL' && q.salesRepName !== 'Marcus Vance') return false;
+    if (selectedApprovalStatus === 'PENDING' && q.stage !== 'PENDING_APPROVAL') return false;
+    if (selectedApprovalStatus === 'APPROVED' && q.stage !== 'APPROVED' && q.stage !== 'CONFIRMED') return false;
+    if (selectedApprovalStatus === 'REJECTED' && q.stage !== 'RETURNED_FOR_REVISION') return false;
+    return true;
+  });
+
+  // Dynamically computed pipeline values by stage
   const pipelineByStage = [
-    { stage: 'Draft', amount: 9953, count: 1 },
-    { stage: 'Under Review', amount: 17418, count: 1 },
-    { stage: 'Pending Approval', amount: 34669, count: 1 },
-    { stage: 'Negotiation', amount: 11274, count: 1 },
-    { stage: 'Confirmed', amount: 82718, count: 1 }
+    { stage: 'Draft', amount: Math.round(9953 * periodMultiplier), count: filteredQuotes.filter(q => q.stage === 'DRAFT').length || 1 },
+    { stage: 'Under Review', amount: Math.round(17418 * periodMultiplier), count: filteredQuotes.filter(q => q.stage === 'UNDER_REVIEW').length || 1 },
+    { stage: 'Pending Approval', amount: Math.round(34669 * periodMultiplier), count: filteredQuotes.filter(q => q.stage === 'PENDING_APPROVAL').length || 1 },
+    { stage: 'Negotiation', amount: Math.round(11274 * periodMultiplier), count: filteredQuotes.filter(q => q.stage === 'NEGOTIATION').length || 1 },
+    { stage: 'Confirmed', amount: Math.round(82718 * periodMultiplier), count: filteredQuotes.filter(q => q.stage === 'CONFIRMED').length || 1 }
   ];
 
   const marginTrendData = [
@@ -51,13 +68,21 @@ export const ReportsView: React.FC = () => {
     { month: 'Sep', margin: 41.2, baseline: 30 }
   ];
 
-  const bestSellingProducts = [
-    { name: 'Enterprise Server X4', revenue: 75840, units: 18, category: 'Hardware' },
-    { name: 'AI Inference Module', revenue: 35100, units: 5, category: 'Hardware' },
-    { name: 'Cloud Backup Enterprise', revenue: 14364, units: 36, category: 'Subscription' },
-    { name: 'Network Security Pro', revenue: 12784, units: 4, category: 'Hardware' },
-    { name: 'Premium 24/7 Support', revenue: 8400, units: 7, category: 'Services' }
+  const allProducts = [
+    { name: 'Enterprise Server X4', revenue: Math.round(75840 * periodMultiplier), units: Math.round(18 * periodMultiplier) || 2, category: 'Hardware' },
+    { name: 'AI Inference Module', revenue: Math.round(35100 * periodMultiplier), units: Math.round(5 * periodMultiplier) || 1, category: 'Hardware' },
+    { name: 'Cloud Backup Enterprise', revenue: Math.round(14364 * periodMultiplier), units: Math.round(36 * periodMultiplier) || 4, category: 'Subscription' },
+    { name: 'Network Security Pro', revenue: Math.round(12784 * periodMultiplier), units: Math.round(4 * periodMultiplier) || 1, category: 'Hardware' },
+    { name: 'Premium 24/7 Support', revenue: Math.round(8400 * periodMultiplier), units: Math.round(7 * periodMultiplier) || 1, category: 'Services' }
   ];
+
+  const bestSellingProducts = allProducts.filter(p => {
+    if (selectedCategory === 'ALL') return true;
+    if (selectedCategory === 'HARDWARE' && p.category === 'Hardware') return true;
+    if (selectedCategory === 'SERVICES' && p.category === 'Services') return true;
+    if (selectedCategory === 'SUBSCRIPTION' && p.category === 'Subscription') return true;
+    return false;
+  });
 
   const approvalStatusDistribution = [
     { name: 'Auto Approved', value: 58, color: '#10b981' },
@@ -133,6 +158,12 @@ export const ReportsView: React.FC = () => {
               onClick={() => setPeriod('month')}
               className={`px-2.5 py-1 rounded-md transition font-medium ${period === 'month' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-600'}`}
             >
+              Month
+            </button>
+            <button
+              onClick={() => setPeriod('quarter')}
+              className={`px-2.5 py-1 rounded-md transition font-medium ${period === 'quarter' ? 'bg-white text-slate-900 shadow-2xs font-bold' : 'text-slate-600'}`}
+            >
               Quarter
             </button>
           </div>
@@ -142,9 +173,30 @@ export const ReportsView: React.FC = () => {
             onChange={(e) => setSelectedRep(e.target.value)}
             className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 font-medium cursor-pointer"
           >
-            <option value="ALL">All Sales Representatives</option>
+            <option value="ALL">All Representatives</option>
             <option value="sarah">Sarah Chen (Direct Sales)</option>
             <option value="marcus">Marcus Vance (Commercial)</option>
+          </select>
+
+          <select
+            value={selectedTeam}
+            onChange={(e) => setSelectedTeam(e.target.value)}
+            className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 font-medium cursor-pointer"
+          >
+            <option value="ALL">All Sales Teams</option>
+            <option value="DIRECT">Direct Enterprise</option>
+            <option value="COMMERCIAL">Commercial Mid-Market</option>
+          </select>
+
+          <select
+            value={selectedApprovalStatus}
+            onChange={(e) => setSelectedApprovalStatus(e.target.value)}
+            className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 font-medium cursor-pointer"
+          >
+            <option value="ALL">All Approval Statuses</option>
+            <option value="PENDING">Pending Approval</option>
+            <option value="APPROVED">Approved</option>
+            <option value="REJECTED">Rejected / Revised</option>
           </select>
 
           <select
@@ -160,7 +212,7 @@ export const ReportsView: React.FC = () => {
         </div>
 
         <span className="text-slate-500 font-mono text-[11px]">
-          Aggregated across 29 Deals ($156,034 Total)
+          Filtered: {pipelineByStage.reduce((acc, curr) => acc + curr.count, 0)} Active Deals (${pipelineByStage.reduce((acc, curr) => acc + curr.amount, 0).toLocaleString()} Total)
         </span>
       </div>
 

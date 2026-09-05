@@ -5,7 +5,8 @@ import {
   RotateCw, 
   HelpCircle, 
   CheckCircle2, 
-  ArrowRight
+  ArrowRight,
+  LogOut
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
@@ -17,7 +18,8 @@ export const Topbar: React.FC = () => {
     recalculateActiveQuote, 
     dealAlerts, 
     showNotification,
-    setIsGuideOpen 
+    setIsGuideOpen,
+    resetDemoData 
   } = useApp();
 
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -41,7 +43,10 @@ export const Topbar: React.FC = () => {
         return { title: 'Deal Health & Anomaly Monitoring', breadcrumb: 'Intelligence / Risk' };
       case 'reports':
         return { title: 'Executive Analytics & Performance', breadcrumb: 'Intelligence / Reports' };
+      case 'manager-governance':
+        return { title: 'Sales Operations Governance & Thresholds', breadcrumb: 'Management / Governance' };
       case 'admin':
+      case 'admin-config':
         return { title: 'Platform Administration & Configuration', breadcrumb: 'Settings / Configuration' };
       default:
         return { title: 'DealFlow360', breadcrumb: 'Sales Workspace' };
@@ -57,6 +62,12 @@ export const Topbar: React.FC = () => {
       setIsRefreshing(false);
       showNotification('Refreshed authoritative pricing, warehouse inventory, and approval rules from FastAPI.', 'success');
     }, 600);
+  };
+
+  const handleResetData = () => {
+    if (window.confirm('Reset all demo state (quotations, approvals, fulfillment, invoices) back to original seed data?')) {
+      resetDemoData();
+    }
   };
 
   return (
@@ -89,6 +100,15 @@ export const Topbar: React.FC = () => {
         >
           <RotateCw className={`w-3.5 h-3.5 text-gray-500 ${isRefreshing ? 'animate-spin text-[#2563EB]' : ''}`} />
           <span className="hidden sm:inline">Reload</span>
+        </button>
+
+        {/* Reset Demo Data Button */}
+        <button
+          onClick={handleResetData}
+          title="Reset all demo quotes, approvals, and invoices to initial state"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-rose-200 bg-rose-50/50 hover:bg-rose-100 text-rose-700 text-xs font-medium transition cursor-pointer"
+        >
+          <span>Reset Demo</span>
         </button>
 
         {/* Quick Test Flow Walkthrough helper */}
@@ -152,12 +172,20 @@ export const Topbar: React.FC = () => {
           )}
         </div>
 
-        {/* Current Persona Pill */}
+        {/* Current Persona Pill & Sign Out */}
         <div className="hidden lg:flex items-center gap-2 pl-2 border-l border-gray-200">
           <span className="text-[11px] font-medium text-gray-400">Role:</span>
           <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-800 font-mono">
             {currentUser.role.replace('_', ' ')}
           </span>
+          <button
+            onClick={() => setCurrentPage('login')}
+            title="Sign Out / Switch Persona"
+            className="flex items-center gap-1 px-2 py-1 ml-1 rounded-md text-[11px] text-gray-500 hover:text-red-600 hover:bg-red-50 transition cursor-pointer"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span className="hidden xl:inline">Sign Out</span>
+          </button>
         </div>
       </div>
     </header>

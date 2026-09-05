@@ -19,16 +19,21 @@ import { RiskBadge } from '../common/RiskBadge';
 import { QuotationStage } from '../../types';
 import { getRoleMeta } from '../../utils/rbac';
 
-export const QuotationsList: React.FC = () => {
+interface QuotationsListProps {
+  initialViewMode?: 'table' | 'kanban';
+}
+
+export const QuotationsList: React.FC<QuotationsListProps> = ({ initialViewMode = 'table' }) => {
   const { 
     quotations, 
     setCurrentPage, 
     setSelectedQuoteId, 
     currentUser,
+    createNewQuotation,
     showNotification 
   } = useApp();
 
-  const [viewMode, setViewMode] = useState<'table' | 'kanban'>('table');
+  const [viewMode, setViewMode] = useState<'table' | 'kanban'>(initialViewMode);
   const [searchTerm, setSearchTerm] = useState('');
   const [stageFilter, setStageFilter] = useState<string>('ALL');
   const [scopeFilter, setScopeFilter] = useState<'MY_DEALS' | 'ALL_DEALS' | 'NEEDS_APPROVAL'>(
@@ -102,17 +107,17 @@ export const QuotationsList: React.FC = () => {
           </div>
 
           {/* New Quote Button */}
-          <button
-            onClick={() => {
-              setSelectedQuoteId('q-1048');
-              setCurrentPage('quote-builder');
-              showNotification('Created draft quote initialized with standard tier limits.', 'info');
-            }}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#2563EB] hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Create Quotation</span>
-          </button>
+          {(currentUser.role === 'SALES_REP' || currentUser.role === 'ADMIN' || currentUser.role === 'SALES_MANAGER') && (
+            <button
+              onClick={() => {
+                createNewQuotation();
+              }}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#2563EB] hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Create Quotation</span>
+            </button>
+          )}
         </div>
       </div>
 

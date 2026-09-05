@@ -37,6 +37,7 @@ export const DashboardView: React.FC = () => {
     setSelectedQuoteId, 
     auditLogs,
     currentUser,
+    createNewQuotation,
     approveCurrentStep,
     returnForRevision,
     showNotification
@@ -56,14 +57,16 @@ export const DashboardView: React.FC = () => {
   const repPipeline = repQuotes.reduce((acc, q) => acc + q.totalAmount, 0);
   const repQuota = 135000;
   const repAttainment = Math.round((repPipeline / repQuota) * 100);
-  const repPendingApprovals = approvals.filter(a => 
-    a.status === 'PENDING' && (a.salesRepName === currentUser.name || a.salesRepName === 'Sarah Chen')
-  );
+  const repPendingApprovals = approvals.filter(a => {
+    const q = quotations.find(quote => quote.id === a.quotationId);
+    return a.status === 'PENDING' && (q?.salesRepName === currentUser.name || q?.salesRepName === 'Sarah Chen');
+  });
 
-  // Manager-specific calculations
-  const managerPending = approvals.filter(a => 
-    a.status === 'PENDING' && a.currentStepRole === 'SALES_MANAGER'
-  );
+  // Manager-specific calculations (derived from pending step role)
+  const managerPending = approvals.filter(a => {
+    const pendingStep = a.steps.find(s => s.status === 'PENDING');
+    return a.status === 'PENDING' && pendingStep?.roleRequired === 'SALES_MANAGER';
+  });
   const discountBreachQuotes = quotations.filter(q => 
     q.lines.some(l => l.discountExcessPercent > 0)
   );
@@ -108,8 +111,7 @@ export const DashboardView: React.FC = () => {
           {role === 'SALES_REP' && (
             <button
               onClick={() => {
-                setSelectedQuoteId('q-1048');
-                setCurrentPage('quote-builder');
+                createNewQuotation();
               }}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#2563EB] hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition cursor-pointer"
             >

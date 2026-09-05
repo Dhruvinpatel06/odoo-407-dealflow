@@ -172,6 +172,7 @@ export const Sidebar: React.FC = () => {
           <option value="SALES_REP">Sales Rep (Sarah Chen)</option>
           <option value="SALES_MANAGER">Sales Manager (Marcus Vance)</option>
           <option value="FINANCE_OPERATIONS">Finance / Ops (Elena Rostova)</option>
+          <option value="FULFILLMENT_OPERATOR">Fulfillment (Carlos Ruiz)</option>
           <option value="CUSTOMER_PORTAL">Customer (David Kross)</option>
           <option value="ADMIN">Platform Admin (Alex Mercer)</option>
         </select>

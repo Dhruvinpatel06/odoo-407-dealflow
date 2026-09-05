@@ -21,7 +21,8 @@ import {
   RotateCcw,
   Target,
   BarChart3,
-  CreditCard
+  CreditCard,
+  Percent
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { StatusBadge } from '../common/StatusBadge';
@@ -142,10 +143,10 @@ export const DashboardView: React.FC = () => {
 
           {role === 'ADMIN' && (
             <button
-              onClick={() => setCurrentPage('admin')}
+              onClick={() => setCurrentPage('discount-ceilings')}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold shadow-xs transition cursor-pointer"
             >
-              <Settings className="w-4 h-4" />
+              <Percent className="w-4 h-4" />
               <span>Configure Policy Ceilings</span>
             </button>
           )}

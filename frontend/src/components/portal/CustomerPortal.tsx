@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { 
-  Building2, 
-  CheckCircle2, 
-  Send, 
-  MessageSquare, 
-  DollarSign, 
-  ShieldCheck, 
+import {
+  Building2,
+  CheckCircle2,
+  Send,
+  MessageSquare,
+  DollarSign,
+  ShieldCheck,
   HelpCircle,
   FileText,
   Clock,
@@ -19,16 +19,16 @@ import { useApp } from '../../context/AppContext';
 import { StatusBadge } from '../common/StatusBadge';
 
 export const CustomerPortal: React.FC = () => {
-  const { 
-    quotations, 
+  const {
+    quotations,
     currentUser,
     negotiations,
-    submitCustomerNegotiation, 
+    submitCustomerNegotiation,
     addLineComment,
-    customerConfirmQuote, 
-    setUserRole, 
+    customerConfirmQuote,
+    setUserRole,
     setCurrentPage,
-    showNotification 
+    showNotification
   } = useApp();
 
   // Critical Data Isolation: Filter quotes exclusively by logged-in customer's customerId
@@ -40,7 +40,7 @@ export const CustomerPortal: React.FC = () => {
 
   const [counterDiscount, setCounterDiscount] = useState<number>(18);
   const [changeReason, setChangeReason] = useState<string>('We require an additional concession to match our approved capital expenditure budget for this quarter.');
-  
+
   // Line-level question/comment expansion state
   const [expandedLineId, setExpandedLineId] = useState<string | null>(null);
   const [lineInputTexts, setLineInputTexts] = useState<Record<string, string>>({});
@@ -156,13 +156,12 @@ export const CustomerPortal: React.FC = () => {
             {/* Negotiation Status Indicator */}
             <div className="flex items-center gap-2">
               <span className="text-xs text-slate-500 font-medium">Negotiation State:</span>
-              <span className={`text-xs font-semibold px-2.5 py-1 rounded-md border ${
-                quote.stage === 'CONFIRMED'
+              <span className={`text-xs font-semibold px-2.5 py-1 rounded-md border ${quote.stage === 'CONFIRMED'
                   ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
                   : quote.stage === 'UNDER_NEGOTIATION'
-                  ? 'bg-purple-50 text-purple-800 border-purple-200'
-                  : 'bg-blue-50 text-blue-800 border-blue-200'
-              }`}>
+                    ? 'bg-purple-50 text-purple-800 border-purple-200'
+                    : 'bg-blue-50 text-blue-800 border-blue-200'
+                }`}>
                 {quote.stage === 'CONFIRMED' ? 'Confirmed & Accepted' : quote.stage === 'UNDER_NEGOTIATION' ? 'Active Negotiation' : 'Live Interactive Review'}
               </span>
             </div>
@@ -270,11 +269,10 @@ export const CustomerPortal: React.FC = () => {
                         <td className="py-4 px-4 text-center">
                           <button
                             onClick={() => setExpandedLineId(isExpanded ? null : line.id)}
-                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium transition cursor-pointer ${
-                              isExpanded || commentCount > 0
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium transition cursor-pointer ${isExpanded || commentCount > 0
                                 ? 'bg-blue-50 text-blue-700 border border-blue-200'
                                 : 'text-slate-500 hover:bg-slate-100'
-                            }`}
+                              }`}
                           >
                             <MessageSquare className="w-3 h-3" />
                             <span>{commentCount > 0 ? `${commentCount}` : 'Ask'}</span>

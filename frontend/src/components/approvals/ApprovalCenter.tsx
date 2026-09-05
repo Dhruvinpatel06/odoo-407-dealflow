@@ -54,8 +54,9 @@ export const ApprovalCenter: React.FC = () => {
   // - Sales Manager can approve if current step is SALES_MANAGER
   // - Finance can approve if current step is FINANCE_OPERATIONS
   // - Sales Rep CANNOT approve any step (strictly view-only submitter tracking)
-  const isManagerStep = activeApproval?.currentStepRole === 'SALES_MANAGER';
-  const isFinanceStep = activeApproval?.currentStepRole === 'FINANCE_OPERATIONS';
+  const pendingStep = activeApproval?.steps.find(s => s.status === 'PENDING');
+  const isManagerStep = pendingStep?.roleRequired === 'SALES_MANAGER';
+  const isFinanceStep = pendingStep?.roleRequired === 'FINANCE_OPERATIONS';
 
   const canApprove = 
     currentUser.role === 'ADMIN' ||
@@ -206,7 +207,7 @@ export const ApprovalCenter: React.FC = () => {
               <div>
                 <div className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-3 flex items-center justify-between">
                   <span>Sequential Approval Chain</span>
-                  <span className="text-[10px] text-gray-400 font-mono">Backend Directed</span>
+                  <span className="text-[10px] text-gray-400 font-mono">System Directed</span>
                 </div>
 
                 <div className="space-y-2.5">

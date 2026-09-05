@@ -105,7 +105,7 @@ export const TestFlowGuideModal: React.FC = () => {
     {
       id: 'AT-07',
       title: '7. Customer Portal Negotiation & Auto Re-Approval',
-      summary: 'Switch to Customer view. Counter-propose a larger discount. The backend automatically catches the violation and re-enters the approval queue!',
+      summary: 'Switch to Customer view. Counter-propose a larger discount. The mock governance engine automatically catches the violation and routes for demo re-approval!',
       icon: MessageSquareQuote,
       actionLabel: 'Open Customer Portal',
       onAction: () => {

@@ -9,7 +9,9 @@ import {
   DealAlert, 
   Recommendation, 
   User,
-  SubscriptionItem
+  SubscriptionItem,
+  NegotiationRequest,
+  GovernanceConfig
 } from './types';
 
 export const mockUsers: User[] = [
@@ -806,5 +808,51 @@ export const mockDealAlerts: DealAlert[] = [
     ageDays: 1,
     status: 'ACKNOWLEDGED',
     suggestedAction: 'Execute consolidation from incoming East Depot replenishment batch.'
+  }
+];
+
+export const mockGovernanceConfig: GovernanceConfig = {
+  roleCeilings: {
+    repCeiling: 10,
+    managerCeiling: 20,
+    financeCeiling: 35
+  },
+  tierDiscountCeilings: {
+    BRONZE: 5,
+    SILVER: 10,
+    GOLD: 15,
+    PLATINUM: 20
+  },
+  categoryDiscountCeilings: {
+    HARDWARE: 15,
+    SERVICES: 10,
+    SUBSCRIPTION: 15
+  },
+  managerApprovalRiskThreshold: 45,
+  financeApprovalRiskThreshold: 70,
+  minCorporateMarginFloor: 25,
+  riskWeights: {
+    discountBreach: 40,
+    marginDeviation: 35,
+    paymentRisk: 25
+  }
+};
+
+export const mockNegotiations: NegotiationRequest[] = [
+  {
+    id: 'neg-1',
+    quotationId: 'q-1049',
+    customerName: 'NovaTech Industries',
+    requestedDiscountPercent: 12,
+    notes: 'NovaTech procurement requests 12% on hardware to meet capital expenditure allocation constraints.',
+    status: 'PENDING_REVIEW',
+    createdAt: '2026-09-03T11:00:00Z',
+    lineComments: [
+      {
+        lineId: 'ql-4',
+        productName: 'Network Security Appliance Pro',
+        comment: 'Can we get an additional 4% discount if we agree to a 2-year maintenance contract?'
+      }
+    ]
   }
 ];

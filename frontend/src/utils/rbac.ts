@@ -1,4 +1,4 @@
-import { UserRole } from '../types';
+import { UserRole, ApprovalInstance, ApprovalStep } from '../types';
 import { 
   LayoutDashboard, 
   FileText, 
@@ -21,8 +21,10 @@ export interface RolePermissions {
   canViewRiskScores: boolean;
   canCreateQuotations: boolean;
   canEditGovernancePolicies: boolean;
+  canAccessManagerGovernance: boolean;
   canAccessBilling: boolean;
   canAccessFulfillment: boolean;
+  canEditFulfillment: boolean;
   canAccessHealth: boolean;
   canAccessReports: boolean;
   isExternalCustomer: boolean;
@@ -39,8 +41,10 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
     canViewRiskScores: true,
     canCreateQuotations: true,
     canEditGovernancePolicies: false,
+    canAccessManagerGovernance: false,
     canAccessBilling: false,
-    canAccessFulfillment: false,
+    canAccessFulfillment: true, // View-only tracking enabled for Sales Rep
+    canEditFulfillment: false, // Cannot edit or override warehouse allocation
     canAccessHealth: true,
     canAccessReports: false,
     isExternalCustomer: false,
@@ -55,8 +59,10 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
     canViewRiskScores: true,
     canCreateQuotations: true,
     canEditGovernancePolicies: false,
+    canAccessManagerGovernance: true, // Limited governance area for discount tiers & approval thresholds
     canAccessBilling: true,
     canAccessFulfillment: true,
+    canEditFulfillment: false,
     canAccessHealth: true,
     canAccessReports: true,
     isExternalCustomer: false,
@@ -71,8 +77,10 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
     canViewRiskScores: true,
     canCreateQuotations: false,
     canEditGovernancePolicies: false,
+    canAccessManagerGovernance: false,
     canAccessBilling: true,
     canAccessFulfillment: true,
+    canEditFulfillment: true,
     canAccessHealth: true,
     canAccessReports: true,
     isExternalCustomer: false,
@@ -87,8 +95,10 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
     canViewRiskScores: true,
     canCreateQuotations: true,
     canEditGovernancePolicies: true,
+    canAccessManagerGovernance: true,
     canAccessBilling: true,
     canAccessFulfillment: true,
+    canEditFulfillment: true,
     canAccessHealth: true,
     canAccessReports: true,
     isExternalCustomer: false,
@@ -103,8 +113,10 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
     canViewRiskScores: false, // RESTRICTED in portal
     canCreateQuotations: false,
     canEditGovernancePolicies: false,
+    canAccessManagerGovernance: false,
     canAccessBilling: false,
     canAccessFulfillment: false,
+    canEditFulfillment: false,
     canAccessHealth: false,
     canAccessReports: false,
     isExternalCustomer: true,
@@ -119,13 +131,24 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
     canViewRiskScores: false,
     canCreateQuotations: false,
     canEditGovernancePolicies: false,
+    canAccessManagerGovernance: false,
     canAccessBilling: false,
     canAccessFulfillment: true,
+    canEditFulfillment: true,
     canAccessHealth: false,
     canAccessReports: false,
     isExternalCustomer: false,
   }
 };
+
+export function getPendingApprovalStep(approval?: ApprovalInstance): ApprovalStep | undefined {
+  if (!approval || !approval.steps) return undefined;
+  return approval.steps.find(s => s.status === 'PENDING');
+}
+
+export function getPendingApprovalRole(approval?: ApprovalInstance): 'SALES_MANAGER' | 'FINANCE_OPERATIONS' | undefined {
+  return getPendingApprovalStep(approval)?.roleRequired;
+}
 
 export interface NavItemConfig {
   id: string;
@@ -179,7 +202,13 @@ export function getRoleNavItems(
   }
 
   if (perms.canAccessFulfillment) {
-    items.push({ id: 'fulfillment', label: 'Fulfillment', icon: Truck, badge: '1' });
+    items.push({ 
+      id: 'fulfillment', 
+      label: role === 'SALES_REP' ? 'Fulfillment Tracking' : 'Fulfillment', 
+      icon: Truck, 
+      badge: '1',
+      roleNote: role === 'SALES_REP' ? 'View-Only' : undefined
+    });
   }
 
   if (perms.canAccessBilling) {
@@ -199,6 +228,17 @@ export function getRoleNavItems(
     items.push({ id: 'reports', label: 'Reports & Analytics', icon: BarChart3 });
   }
 
+  // Sales Manager limited governance area (Requirements Section 14)
+  if (role === 'SALES_MANAGER' && perms.canAccessManagerGovernance) {
+    items.push({
+      id: 'manager-governance',
+      label: 'Governance Policies',
+      icon: Settings,
+      highlighted: false,
+      roleNote: 'Policy Limits'
+    });
+  }
+
   // Hide 'Administration' for Sales Reps, Sales Managers, Finance Ops!
   // Only show for ADMIN
   if (perms.canAccessAdmin) {
@@ -213,6 +253,7 @@ export function getRoleNavItems(
 
   return items;
 }
+
 
 export function getRoleMeta(role: UserRole) {
   switch (role) {
@@ -260,6 +301,15 @@ export function getRoleMeta(role: UserRole) {
         badgeDot: 'bg-teal-600',
         desc: 'External client: Reviews proposed deliverables, negotiated pricing, accepts or counters terms.',
         restrictionsSummary: "Strict data minimization: Internal margins, unit costs, risk scores, and approval notes are hidden."
+      };
+    case 'FULFILLMENT_OPERATOR':
+      return {
+        label: 'Fulfillment Operations',
+        name: 'Carlos Ruiz',
+        badgeColor: 'bg-sky-50 text-sky-700 border-sky-200',
+        badgeDot: 'bg-sky-600',
+        desc: 'Warehouse Logistics: Multi-facility order allocation and backorder management.',
+        restrictionsSummary: 'Access to warehouse fulfillment tracking, allocation overrides, and inventory management.'
       };
     default:
       return {

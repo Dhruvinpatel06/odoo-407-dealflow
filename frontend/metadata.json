@@ -1,6 +1,5 @@
 {
   "name": "DealFlow360",
   "description": "Intelligent, self-governing B2B sales operations platform featuring discount governance, automated approvals, multi-warehouse fulfillment, hybrid billing, and deal monitoring.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "requestFramePermissions": []
 }

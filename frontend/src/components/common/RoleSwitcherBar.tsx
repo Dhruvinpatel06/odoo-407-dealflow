@@ -2,7 +2,7 @@ import React from 'react';
 import { useApp } from '../../context/AppContext';
 import { UserRole } from '../../types';
 import { getRoleMeta } from '../../utils/rbac';
-import { Shield, ShieldAlert, Sparkles, User, Info, ArrowRight } from 'lucide-react';
+import { Shield, ShieldAlert, Sparkles, User, Info, ArrowRight, LogOut } from 'lucide-react';
 
 export const RoleSwitcherBar: React.FC = () => {
   const { currentUser, setUserRole, setCurrentPage } = useApp();
@@ -13,6 +13,7 @@ export const RoleSwitcherBar: React.FC = () => {
     { role: 'SALES_REP', label: 'Sales Rep', user: 'Sarah Chen' },
     { role: 'SALES_MANAGER', label: 'Sales Manager', user: 'Marcus Vance' },
     { role: 'FINANCE_OPERATIONS', label: 'Finance & Ops', user: 'Elena Rostova' },
+    { role: 'FULFILLMENT_OPERATOR', label: 'Fulfillment', user: 'Carlos Ruiz' },
     { role: 'ADMIN', label: 'Admin', user: 'Alex Mercer' },
     { role: 'CUSTOMER_PORTAL', label: 'Customer Portal', user: 'David Kross' }
   ];
@@ -61,6 +62,14 @@ export const RoleSwitcherBar: React.FC = () => {
             );
           })}
         </div>
+        <button
+          onClick={() => setCurrentPage('login')}
+          title="Sign Out to Login Screen"
+          className="flex items-center gap-1 px-2 py-1 ml-1 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-md transition cursor-pointer text-[11px] font-medium"
+        >
+          <LogOut className="w-3 h-3" />
+          <span className="hidden sm:inline">Sign Out</span>
+        </button>
       </div>
     </div>
   );

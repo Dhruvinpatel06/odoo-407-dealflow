@@ -298,3 +298,30 @@ export interface LogoutResponse {
   message?: string;
   success?: boolean;
 }
+
+export interface SignupRequest {
+  name: string;
+  email: string;
+  password: string;
+}
+
+export interface UserResponse {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  customer_id?: string | null;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface AdminCreateUserRequest {
+  name: string;
+  email: string;
+  password: string;
+  role: 'CUSTOMER' | 'SALES_REP' | 'SALES_MANAGER' | 'FINANCE_OPERATIONS' | 'ADMIN';
+  customer_id?: string;
+  is_active?: boolean;
+}
+

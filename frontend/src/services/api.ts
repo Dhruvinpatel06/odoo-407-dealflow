@@ -57,3 +57,5 @@ export const queryKeys = {
 };
 
 export { authService, AuthError } from './authService';
+export { userService, UserAdminError } from './userService';
+

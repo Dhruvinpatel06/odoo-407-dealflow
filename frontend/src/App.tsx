@@ -14,6 +14,7 @@ import { ReportsView } from './components/reports/ReportsView';
 import { AdminConfigView } from './components/admin/AdminConfigView';
 import { ManagerGovernanceView } from './components/governance/ManagerGovernanceView';
 import { LoginView } from './components/auth/LoginView';
+import { SignupView } from './components/auth/SignupView';
 import { TestFlowGuideModal } from './components/common/TestFlowGuideModal';
 import { AccessRestrictedView } from './components/common/AccessRestrictedView';
 import { CheckCircle2, AlertTriangle, Info, X } from 'lucide-react';
@@ -57,6 +58,17 @@ const AppContent: React.FC = () => {
       </div>
     );
   }
+
+  // Full-screen Public Registration
+  if (currentPage === 'signup') {
+    return (
+      <div className="min-h-screen bg-[#F9FAFB] font-sans text-[#111827]">
+        <SignupView />
+        <TestFlowGuideModal />
+      </div>
+    );
+  }
+
 
   // Standard Internal Enterprise Layout
   const renderCurrentPage = () => {

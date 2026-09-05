@@ -20,4 +20,12 @@ class UserCreateRequest(BaseModel):
     is_active: bool = Field(True, description="Whether the user is active")
 
 
-__all__ = ["UserCreateRequest", "UserResponse"]
+class AdminChangePasswordRequest(BaseModel):
+    """Payload for administrative password change."""
+
+    new_password: str = Field(
+        ..., min_length=8, description="New password with minimum 8 characters"
+    )
+
+
+__all__ = ["UserCreateRequest", "UserResponse", "AdminChangePasswordRequest"]

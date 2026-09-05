@@ -63,5 +63,14 @@ class UserRepository:
         stmt = stmt.offset(skip).limit(limit)
         return list(db.scalars(stmt).all())
 
+    def update_password(self, db: Session, user: User, password_hash: str) -> User:
+        """Update only the user's password_hash."""
+        user.password_hash = password_hash
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        return user
+
 
 user_repository = UserRepository()
+

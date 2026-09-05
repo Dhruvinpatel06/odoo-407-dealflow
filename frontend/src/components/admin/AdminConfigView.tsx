@@ -27,8 +27,72 @@ import { mockProducts, mockWarehouses } from '../../mockData';
 import { userService, UserAdminError } from '../../services/api';
 import { UserResponse, AdminCreateUserRequest } from '../../types';
 
+type AdminTab = 'DISCOUNTS' | 'CATALOG' | 'WAREHOUSES' | 'SUBSCRIPTIONS' | 'RISK' | 'USERS';
+
+const PAGE_TO_TAB: Record<string, AdminTab> = {
+  'discount-ceilings': 'DISCOUNTS',
+  'catalog-pricelists': 'CATALOG',
+  'warehouses-stock': 'WAREHOUSES',
+  'subscriptions-billing': 'SUBSCRIPTIONS',
+  'risk-margins': 'RISK',
+  'users-access': 'USERS',
+  'admin': 'DISCOUNTS',
+  'admin-config': 'DISCOUNTS'
+};
+
+const TAB_TO_PAGE: Record<AdminTab, string> = {
+  'DISCOUNTS': 'discount-ceilings',
+  'CATALOG': 'catalog-pricelists',
+  'WAREHOUSES': 'warehouses-stock',
+  'SUBSCRIPTIONS': 'subscriptions-billing',
+  'RISK': 'risk-margins',
+  'USERS': 'users-access'
+};
+
+const TAB_INFO: Record<AdminTab, { title: string; subtitle: string; tag: string }> = {
+  DISCOUNTS: {
+    title: 'Discount Ceilings & Tiers',
+    subtitle: 'Authoritative discount ceilings by sales role, customer tier, and product category (BR-01, BR-02).',
+    tag: 'Policy Governance'
+  },
+  CATALOG: {
+    title: 'Catalog & Price Lists',
+    subtitle: 'Manage SKUs, list pricing, unit costs, and category discount limitations.',
+    tag: 'Products & Rules'
+  },
+  WAREHOUSES: {
+    title: 'Warehouses & Stock Allocation',
+    subtitle: 'Facility routing rules, shipping weight factors, and multi-location inventory.',
+    tag: 'Facility Routing'
+  },
+  SUBSCRIPTIONS: {
+    title: 'Subscriptions & Recurring Billing',
+    subtitle: 'Recurring service schedules, proration calculation engine, and billing cadence.',
+    tag: 'Recurring Plans'
+  },
+  RISK: {
+    title: 'Risk Scoring & Margin Protection',
+    subtitle: 'Corporate margin floor (BR-04), hard stop policy thresholds, and composite risk weights.',
+    tag: 'Risk Thresholds'
+  },
+  USERS: {
+    title: 'Users & Access Administration',
+    subtitle: 'Active system identities, RBAC assignments, and provisioning via backend authentication service.',
+    tag: 'Active RBAC'
+  }
+};
+
 export const AdminConfigView: React.FC = () => {
-  const { showNotification, currentUser, governanceConfig, updateGovernanceConfig, subscriptions, accessToken } = useApp();
+  const { 
+    showNotification, 
+    currentUser, 
+    governanceConfig, 
+    updateGovernanceConfig, 
+    subscriptions, 
+    accessToken,
+    currentPage,
+    setCurrentPage
+  } = useApp();
 
   // Defense-in-depth RBAC check
   if ((currentUser.role || '').toUpperCase() !== 'ADMIN') {
@@ -40,7 +104,11 @@ export const AdminConfigView: React.FC = () => {
     );
   }
 
-  const [activeTab, setActiveTab] = useState<'DISCOUNTS' | 'CATALOG' | 'WAREHOUSES' | 'SUBSCRIPTIONS' | 'RISK' | 'USERS'>('DISCOUNTS');
+  const activeTab: AdminTab = PAGE_TO_TAB[currentPage] || 'DISCOUNTS';
+
+  const handleTabClick = (tab: AdminTab) => {
+    setCurrentPage(TAB_TO_PAGE[tab]);
+  };
 
   // Users Management State
   const [usersList, setUsersList] = useState<UserResponse[]>([]);
@@ -208,24 +276,35 @@ export const AdminConfigView: React.FC = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-slate-900 tracking-tight">System Governance & Policy Administration</h2>
-          <p className="text-xs text-slate-500 mt-0.5">Authoritative discount ceilings, multi-level approval triggers, catalog controls, and warehouse configurations.</p>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+              System Governance &bull; {TAB_INFO[activeTab].tag}
+            </span>
+          </div>
+          <h2 className="text-xl font-bold text-slate-900 tracking-tight">
+            {TAB_INFO[activeTab].title}
+          </h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            {TAB_INFO[activeTab].subtitle}
+          </p>
         </div>
 
-        <button
-          onClick={handleSavePolicy}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition cursor-pointer"
-        >
-          <Save className="w-3.5 h-3.5" />
-          <span>Save Governance Policies</span>
-        </button>
+        {activeTab !== 'USERS' && (
+          <button
+            onClick={handleSavePolicy}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition cursor-pointer"
+          >
+            <Save className="w-3.5 h-3.5" />
+            <span>Save Governance Policies</span>
+          </button>
+        )}
       </div>
 
-      {/* Tabs */}
+      {/* Governance Navigation Tabs */}
       <div className="flex border-b border-gray-200 overflow-x-auto gap-2">
         <button
-          onClick={() => setActiveTab('DISCOUNTS')}
-          className={`pb-3 px-3 text-xs font-bold border-b-2 transition flex items-center gap-2 cursor-pointer ${
+          onClick={() => handleTabClick('DISCOUNTS')}
+          className={`pb-3 px-3 text-xs font-bold border-b-2 transition flex items-center gap-2 cursor-pointer shrink-0 ${
             activeTab === 'DISCOUNTS' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
           }`}
         >
@@ -234,8 +313,8 @@ export const AdminConfigView: React.FC = () => {
         </button>
 
         <button
-          onClick={() => setActiveTab('CATALOG')}
-          className={`pb-3 px-3 text-xs font-bold border-b-2 transition flex items-center gap-2 cursor-pointer ${
+          onClick={() => handleTabClick('CATALOG')}
+          className={`pb-3 px-3 text-xs font-bold border-b-2 transition flex items-center gap-2 cursor-pointer shrink-0 ${
             activeTab === 'CATALOG' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
           }`}
         >
@@ -244,8 +323,8 @@ export const AdminConfigView: React.FC = () => {
         </button>
 
         <button
-          onClick={() => setActiveTab('WAREHOUSES')}
-          className={`pb-3 px-3 text-xs font-bold border-b-2 transition flex items-center gap-2 cursor-pointer ${
+          onClick={() => handleTabClick('WAREHOUSES')}
+          className={`pb-3 px-3 text-xs font-bold border-b-2 transition flex items-center gap-2 cursor-pointer shrink-0 ${
             activeTab === 'WAREHOUSES' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
           }`}
         >
@@ -254,8 +333,8 @@ export const AdminConfigView: React.FC = () => {
         </button>
 
         <button
-          onClick={() => setActiveTab('SUBSCRIPTIONS')}
-          className={`pb-3 px-3 text-xs font-bold border-b-2 transition flex items-center gap-2 cursor-pointer ${
+          onClick={() => handleTabClick('SUBSCRIPTIONS')}
+          className={`pb-3 px-3 text-xs font-bold border-b-2 transition flex items-center gap-2 cursor-pointer shrink-0 ${
             activeTab === 'SUBSCRIPTIONS' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
           }`}
         >
@@ -264,8 +343,8 @@ export const AdminConfigView: React.FC = () => {
         </button>
 
         <button
-          onClick={() => setActiveTab('RISK')}
-          className={`pb-3 px-3 text-xs font-bold border-b-2 transition flex items-center gap-2 cursor-pointer ${
+          onClick={() => handleTabClick('RISK')}
+          className={`pb-3 px-3 text-xs font-bold border-b-2 transition flex items-center gap-2 cursor-pointer shrink-0 ${
             activeTab === 'RISK' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
           }`}
         >
@@ -274,8 +353,8 @@ export const AdminConfigView: React.FC = () => {
         </button>
 
         <button
-          onClick={() => setActiveTab('USERS')}
-          className={`pb-3 px-3 text-xs font-bold border-b-2 transition flex items-center gap-2 cursor-pointer ${
+          onClick={() => handleTabClick('USERS')}
+          className={`pb-3 px-3 text-xs font-bold border-b-2 transition flex items-center gap-2 cursor-pointer shrink-0 ${
             activeTab === 'USERS' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
           }`}
         >

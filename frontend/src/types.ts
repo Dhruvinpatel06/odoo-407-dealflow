@@ -1,9 +1,9 @@
-export type UserRole = 
-  | 'SALES_REP' 
-  | 'SALES_MANAGER' 
-  | 'FINANCE_OPERATIONS' 
+export type UserRole =
+  | 'SALES_REP'
+  | 'SALES_MANAGER'
+  | 'FINANCE_OPERATIONS'
   | 'FULFILLMENT_OPERATOR'
-  | 'CUSTOMER_PORTAL' 
+  | 'CUSTOMER_PORTAL'
   | 'CUSTOMER'
   | 'ADMIN';
 
@@ -67,7 +67,7 @@ export interface QuotationLine {
   comments?: string[];
 }
 
-export type QuotationStage = 
+export type QuotationStage =
   | 'DRAFT'
   | 'PENDING_APPROVAL'
   | 'UNDER_REVIEW'

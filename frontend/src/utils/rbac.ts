@@ -8,7 +8,13 @@ import {
   Activity, 
   BarChart3, 
   Settings, 
-  LucideIcon
+  LucideIcon,
+  Percent,
+  Package,
+  Warehouse,
+  Repeat,
+  Sliders,
+  Users
 } from 'lucide-react';
 
 export interface RolePermissions {
@@ -185,6 +191,59 @@ export function getRoleNavItems(
 ): NavItemConfig[] {
   const normalizedRole = (role ? String(role).toUpperCase() : '') as UserRole;
   const perms = ROLE_PERMISSIONS[normalizedRole] || ROLE_PERMISSIONS.SALES_REP;
+
+  // Platform Administrator has dedicated System Governance responsibilities
+  // Quotations, Approvals, Fulfillment, Billing & Hybrid, and Deal Health are excluded
+  if (normalizedRole === 'ADMIN') {
+    return [
+      {
+        id: 'dashboard',
+        label: 'Dashboard',
+        icon: LayoutDashboard
+      },
+      {
+        id: 'discount-ceilings',
+        label: 'Discount Ceilings',
+        icon: Percent,
+        roleNote: 'Policy Governance'
+      },
+      {
+        id: 'catalog-pricelists',
+        label: 'Catalog & Price Lists',
+        icon: Package,
+        roleNote: 'Products & Rules'
+      },
+      {
+        id: 'warehouses-stock',
+        label: 'Warehouses & Stock',
+        icon: Warehouse,
+        roleNote: 'Facility Routing'
+      },
+      {
+        id: 'subscriptions-billing',
+        label: 'Subscriptions & Billing',
+        icon: Repeat,
+        roleNote: 'Recurring Plans'
+      },
+      {
+        id: 'risk-margins',
+        label: 'Risk Scoring & Margins',
+        icon: Sliders,
+        roleNote: 'Thresholds'
+      },
+      {
+        id: 'users-access',
+        label: 'Users & Access',
+        icon: Users,
+        roleNote: 'Active RBAC'
+      },
+      {
+        id: 'reports',
+        label: 'Reports & Analytics',
+        icon: BarChart3
+      }
+    ];
+  }
 
   const items: NavItemConfig[] = [
     { 

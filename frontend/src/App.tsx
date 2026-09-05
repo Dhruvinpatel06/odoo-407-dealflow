@@ -71,12 +71,23 @@ const AppContent: React.FC = () => {
 
   // Standard Internal Enterprise Layout
   const renderCurrentPage = () => {
-    // RBAC: If a non-admin attempts to view the Administration page, display access restriction
-    if ((currentPage === 'admin' || currentPage === 'admin-config') && (currentUser.role || '').toUpperCase() !== 'ADMIN') {
+    const adminPages = [
+      'admin',
+      'admin-config',
+      'discount-ceilings',
+      'catalog-pricelists',
+      'warehouses-stock',
+      'subscriptions-billing',
+      'risk-margins',
+      'users-access'
+    ];
+
+    // RBAC: If a non-admin attempts to view any Admin governance page, display access restriction
+    if (adminPages.includes(currentPage) && (currentUser.role || '').toUpperCase() !== 'ADMIN') {
       return (
         <AccessRestrictedView 
           requiredRole="Platform Administrator (Alex Mercer)" 
-          featureName="System Administration & Configuration" 
+          featureName="System Governance & Policy Administration" 
         />
       );
     }
@@ -104,6 +115,12 @@ const AppContent: React.FC = () => {
         return <ManagerGovernanceView />;
       case 'admin':
       case 'admin-config':
+      case 'discount-ceilings':
+      case 'catalog-pricelists':
+      case 'warehouses-stock':
+      case 'subscriptions-billing':
+      case 'risk-margins':
+      case 'users-access':
         return <AdminConfigView />;
       default:
         return <DashboardView />;

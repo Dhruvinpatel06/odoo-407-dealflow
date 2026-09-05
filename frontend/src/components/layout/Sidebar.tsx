@@ -49,11 +49,11 @@ export const Sidebar: React.FC = () => {
           type="button"
           onClick={() => {
             if (isUserAdmin) {
-              setCurrentPage('admin');
+              setCurrentPage('discount-ceilings');
             }
           }}
           className={`w-full p-2 rounded-lg border text-[11px] flex items-center justify-between transition cursor-pointer hover:opacity-90 ${roleMeta.badgeColor}`}
-          title={isUserAdmin ? "Go to Administration" : roleMeta.label}
+          title={isUserAdmin ? "Go to System Governance" : roleMeta.label}
         >
           <div className="flex items-center gap-1.5 font-bold truncate">
             <span className={`w-2 h-2 rounded-full shrink-0 ${roleMeta.badgeDot}`}></span>
@@ -81,11 +81,11 @@ export const Sidebar: React.FC = () => {
       {/* Primary Navigation */}
       <nav className="flex-1 px-4 py-2 space-y-1 overflow-y-auto">
         <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
-          Core Operations
+          {isUserAdmin ? 'System Governance' : 'Core Operations'}
         </div>
         {navItems.map((item) => {
           const Icon = item.icon;
-          const isActive = currentPage === item.id;
+          const isActive = currentPage === item.id || (item.id === 'discount-ceilings' && (currentPage === 'admin' || currentPage === 'admin-config'));
           const isHighlighted = item.highlighted;
 
           return (

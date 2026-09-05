@@ -4,6 +4,7 @@ export type UserRole =
   | 'FINANCE_OPERATIONS' 
   | 'FULFILLMENT_OPERATOR'
   | 'CUSTOMER_PORTAL' 
+  | 'CUSTOMER'
   | 'ADMIN';
 
 export interface User {
@@ -69,10 +70,12 @@ export interface QuotationLine {
 export type QuotationStage = 
   | 'DRAFT'
   | 'PENDING_APPROVAL'
+  | 'UNDER_REVIEW'
   | 'APPROVED'
   | 'REJECTED'
   | 'RETURNED_FOR_REVISION'
   | 'SENT'
+  | 'NEGOTIATION'
   | 'UNDER_NEGOTIATION'
   | 'CONFIRMED';
 
@@ -132,12 +135,14 @@ export interface ApprovalInstance {
   quotationId: string;
   quoteNumber: string;
   customerName: string;
+  salesRepName?: string;
   amount: number;
   riskScore: number;
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'REVISION_REQUIRED';
   steps: ApprovalStep[];
   submittedAt: string;
   reasons: string[];
+  reason?: string;
   auditTimeline: AuditLog[];
 }
 

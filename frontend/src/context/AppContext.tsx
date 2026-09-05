@@ -1166,7 +1166,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return {
         ...inv,
         paidAmount: newPaid,
-        status: newPaid >= inv.amount ? 'PAID' : 'PARTIALLY_PAID'
+        status: newPaid >= inv.amount ? ('PAID' as const) : ('PARTIALLY_PAID' as const)
       };
     })]);
 

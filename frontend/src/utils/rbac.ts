@@ -121,6 +121,24 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
     canAccessReports: false,
     isExternalCustomer: true,
   },
+  CUSTOMER: {
+    canAccessAdmin: false,
+    canApproveQuotes: false,
+    canAccessApprovals: false,
+    isApprover: false,
+    canViewInternalMargins: false,
+    canViewUnitCosts: false,
+    canViewRiskScores: false,
+    canCreateQuotations: false,
+    canEditGovernancePolicies: false,
+    canAccessManagerGovernance: false,
+    canAccessBilling: false,
+    canAccessFulfillment: false,
+    canEditFulfillment: false,
+    canAccessHealth: false,
+    canAccessReports: false,
+    isExternalCustomer: true,
+  },
   FULFILLMENT_OPERATOR: {
     canAccessAdmin: false,
     canApproveQuotes: false,
@@ -294,6 +312,7 @@ export function getRoleMeta(role: UserRole) {
         restrictionsSummary: "Unrestricted access to all views including Administration and immutable audit logs."
       };
     case 'CUSTOMER_PORTAL':
+    case 'CUSTOMER':
       return {
         label: 'Customer Procurement',
         name: 'David Kross (Acme)',

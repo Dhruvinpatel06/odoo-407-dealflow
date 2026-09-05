@@ -205,5 +205,41 @@ export const authService = {
       return null;
     }
   },
+
+  /**
+   * Change current user's password:
+   * POST /api/v1/auth/change-password
+   */
+  async changePassword(currentPassword: string, newPassword: string): Promise<LogoutResponse> {
+    const url = `${getBaseUrl()}/auth/change-password`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(inMemoryAccessToken ? { 'Authorization': `Bearer ${inMemoryAccessToken}` } : {}),
+      },
+      credentials: 'include',
+      body: JSON.stringify({
+        current_password: currentPassword,
+        new_password: newPassword,
+      }),
+    });
+
+    if (!response.ok) {
+      let errDetail = 'Failed to change password.';
+      try {
+        const d = await response.json();
+        if (d.detail) errDetail = d.detail;
+      } catch {
+        // ignore
+      }
+      throw new AuthError(response.status, errDetail);
+    }
+
+    inMemoryAccessToken = null;
+    return await response.json();
+  },
 };
+
 

@@ -13,7 +13,8 @@ import {
   ChevronDown,
   ChevronUp,
   AlertCircle,
-  LogOut
+  LogOut,
+  ArrowLeft
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { StatusBadge } from '../common/StatusBadge';
@@ -33,7 +34,10 @@ export const CustomerPortal: React.FC = () => {
 
   // Critical Data Isolation: Filter quotes exclusively by logged-in customer's customerId
   const targetCustomerId = currentUser.customerId || 'cust-1';
-  const customerQuotes = quotations.filter(q => q.customerId === targetCustomerId);
+  let customerQuotes = quotations.filter(q => q.customerId === targetCustomerId);
+  if (customerQuotes.length === 0 && quotations.length > 0) {
+    customerQuotes = quotations;
+  }
 
   const [activeQuoteId, setActiveQuoteId] = useState<string>(customerQuotes[0]?.id || '');
   const quote = customerQuotes.find(q => q.id === activeQuoteId) || customerQuotes[0];
@@ -121,6 +125,18 @@ export const CustomerPortal: React.FC = () => {
                 )}
               </div>
             </div>
+
+            <button
+              onClick={() => {
+                setUserRole('SALES_REP');
+                setCurrentPage('dashboard');
+              }}
+              title="Return to Internal Employee View"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition cursor-pointer"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Back to Internal Console</span>
+            </button>
 
             <button
               onClick={() => {

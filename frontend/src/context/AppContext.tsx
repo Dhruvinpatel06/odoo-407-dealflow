@@ -265,7 +265,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setCurrentPage('portal');
       showNotification(`Switched role to Customer Portal (${userMatch.name} - Acme Corp)`, 'info');
     } else {
-      if (currentPage === 'portal') {
+      const restrictedForManager = ['billing', 'reports', 'manager-governance'];
+      if (currentPage === 'portal' || (role === 'SALES_MANAGER' && restrictedForManager.includes(currentPage))) {
         setCurrentPage('dashboard');
       }
       showNotification(`Switched active persona to ${userMatch.role.replace('_', ' ')} (${userMatch.name})`, 'info');

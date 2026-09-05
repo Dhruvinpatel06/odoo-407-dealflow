@@ -13,6 +13,7 @@ export const Sidebar: React.FC = () => {
     currentPage, 
     setCurrentPage, 
     currentUser, 
+    setUserRole,
     approvals, 
     dealAlerts,
     setIsGuideOpen,
@@ -138,6 +139,7 @@ export const Sidebar: React.FC = () => {
         <button
           type="button"
           onClick={() => {
+            setUserRole('CUSTOMER_PORTAL');
             setCurrentPage('portal');
           }}
           className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-xs font-medium transition cursor-pointer border ${

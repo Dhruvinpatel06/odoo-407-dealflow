@@ -6,9 +6,10 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 
 from app.common.enums import UserRole
-from app.core.exceptions import DealFlowException
+from app.core.exceptions import DealFlowException, ResourceNotFoundError
 from app.core.security import hash_password
 from app.models.user import User
+from app.modules.auth.repository import auth_repository
 from app.modules.users.repository import user_repository
 from app.modules.users.schemas import UserCreateRequest
 
@@ -54,5 +55,23 @@ class UserService:
             db=db, role=role, is_active=is_active, skip=skip, limit=limit
         )
 
+    def change_user_password(
+        self, db: Session, user_id: uuid.UUID, new_password: str
+    ) -> User:
+        """
+        Administratively change a target user's password.
+        Rejects if user does not exist, updates password_hash with Argon2id,
+        and revokes all active auth_sessions for the target user.
+        """
+        user = user_repository.get_by_id(db, user_id)
+        if not user:
+            raise ResourceNotFoundError(f"User with id '{user_id}' not found")
+
+        new_hash = hash_password(new_password)
+        updated_user = user_repository.update_password(db, user, new_hash)
+        auth_repository.revoke_all_user_sessions(db, user.id)
+        return updated_user
+
 
 user_service = UserService()
+

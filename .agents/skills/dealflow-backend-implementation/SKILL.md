@@ -22,3 +22,6 @@ Hard constraints:
 - Do not trust frontend-calculated authoritative values.
 - Do not bypass role/customer ownership checks.
 - Do not alter finalized schema/API decisions without surfacing the conflict.
+- Use the manual-auth design in `docs/specs/DealFlow360_Manual_Auth_Design.md` for authentication work.
+- Do not reintroduce FastAPI manual authentication.
+- Do not store plaintext passwords or raw refresh tokens.

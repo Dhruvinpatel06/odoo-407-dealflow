@@ -1,6 +1,6 @@
 ---
 name: dealflow-database
-description: Implements and verifies the DealFlow360 PostgreSQL, SQLAlchemy 2.x, and Alembic database layer against the finalized 29-table schema.
+description: Implements and verifies the DealFlow360 PostgreSQL, SQLAlchemy 2.x, and Alembic database layer against the finalized 30-table schema.
 ---
 # DealFlow360 Database
 
@@ -16,7 +16,7 @@ Procedure:
 7. Add repository/integration tests for important constraints and queries.
 
 Hard constraints:
-- Exactly 29 finalized application tables unless explicitly changed.
-- No order_lines, deal_health, reports, currencies, companies, shipping_methods, or refund_records by default.
+- Exactly 30 finalized application tables unless explicitly changed; `auth_sessions` is the authentication session table.
+- No order_lines, deal_health, reports, currencies, companies, shipping_methods, tax_rates, or refund_records by default.
 - Money NUMERIC(12,2); percentages NUMERIC(5,2); quantities NUMERIC(12,2).
 - Business calculations stay in FastAPI services/engines, not DB triggers.

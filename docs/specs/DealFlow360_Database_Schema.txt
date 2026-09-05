@@ -15,11 +15,11 @@ This schema is derived from the finalized DealFlow360 Requirements & Scope
 Specification and the confirmed DealFlow360 Technology Stack.
 
 Confirmed database/infrastructure:
-- Database: Supabase PostgreSQL
+- Database: PostgreSQL (direct/self-managed)
 - ORM: SQLAlchemy 2.x
 - Migrations: Alembic
 - Backend: Python + FastAPI
-- Authentication: Supabase Auth
+- Authentication: FastAPI-owned manual authentication
 - Architecture: Modular Monolith
 
 The backend is authoritative for business rules. Frontend validation is only
@@ -49,40 +49,40 @@ Authentication
 
 FINAL TABLE COUNT
 -----------------
-TOTAL TABLES: 29
+TOTAL TABLES: 30
 
 FINAL TABLE LIST
 ----------------
 01. users
-02. customers
-03. customer_tiers
-04. product_categories
-05. products
-06. product_variants
-07. price_lists
-08. price_list_items
-09. discount_rules
-10. approval_policies
-11. approval_instances
-12. approval_steps
-13. quotations
-14. quotation_lines
-15. orders
-16. recommendation_rules
-17. warehouses
-18. inventory
-19. fulfillment_allocations
-20. backorders
-21. subscription_plans
-22. subscriptions
-23. billing_schedules
-24. invoices
-25. payments
-26. negotiation_requests
-27. negotiation_comments
-28. deal_alerts
-29. audit_logs
-
+02. auth_sessions
+03. customers
+04. customer_tiers
+05. product_categories
+06. products
+07. product_variants
+08. price_lists
+09. price_list_items
+10. discount_rules
+11. approval_policies
+12. approval_instances
+13. approval_steps
+14. quotations
+15. quotation_lines
+16. orders
+17. recommendation_rules
+18. warehouses
+19. inventory
+20. fulfillment_allocations
+21. backorders
+22. subscription_plans
+23. subscriptions
+24. billing_schedules
+25. invoices
+26. payments
+27. negotiation_requests
+28. negotiation_comments
+29. deal_alerts
+30. audit_logs
 GLOBAL DATABASE CONVENTIONS
 ---------------------------
 1. Primary keys:
@@ -130,37 +130,64 @@ TABLE DEFINITIONS
 TABLE 01: users
 ----------------
 Purpose:
-Application-level user identity and authorization metadata. Supabase Auth
-owns authentication credentials; this table owns application-specific user
-information and role.
+Application user identity, authentication credentials, and authorization
+metadata.
 
 Fields:
 - id: UUID PK
   Purpose: Internal user identifier.
-- auth_user_id: UUID UNIQUE NOT NULL
-  Purpose: Identifier of the corresponding Supabase Auth user.
 - name: VARCHAR NOT NULL
   Purpose: User display/full name.
 - email: VARCHAR UNIQUE NOT NULL
-  Purpose: User email address.
+  Purpose: User email address and login identifier.
+- password_hash: VARCHAR NOT NULL
+  Purpose: Argon2id password hash. Never store plaintext passwords.
 - role: ENUM NOT NULL
   Values: SALES_REP, SALES_MANAGER, FINANCE_OPERATIONS, ADMIN, CUSTOMER.
   Purpose: Application authorization role.
 - customer_id: UUID FK -> customers.id NULL
   Purpose: Links a customer portal user to the customer/account they belong to.
 - is_active: BOOLEAN NOT NULL DEFAULT TRUE
-  Purpose: Controls whether the user can access the application.
+  Purpose: Controls whether the user can authenticate and access the application.
 - created_at: TIMESTAMPTZ NOT NULL
   Purpose: Creation timestamp.
 - updated_at: TIMESTAMPTZ NOT NULL
   Purpose: Last modification timestamp.
 
 Constraints:
-- auth_user_id UNIQUE
 - email UNIQUE
 - customer_id is applicable to CUSTOMER users.
+- password_hash must never contain plaintext credentials.
 
-TABLE 02: customers
+TABLE 02: auth_sessions
+-----------------------
+Purpose:
+Persistent authentication-session state used for refresh-token rotation and
+server-side session revocation.
+
+Fields:
+- id: UUID PK
+  Purpose: Authentication session identifier.
+- user_id: UUID FK -> users.id NOT NULL
+  Purpose: User who owns the authentication session.
+- refresh_token_hash: VARCHAR NOT NULL
+  Purpose: Hash of the opaque refresh token. Raw refresh tokens are never stored.
+- expires_at: TIMESTAMPTZ NOT NULL
+  Purpose: Session/refresh-token expiration time.
+- revoked_at: TIMESTAMPTZ NULL
+  Purpose: Time at which the session was revoked.
+- created_at: TIMESTAMPTZ NOT NULL
+  Purpose: Session creation timestamp.
+- last_used_at: TIMESTAMPTZ NULL
+  Purpose: Last successful refresh/use timestamp.
+
+Constraints:
+- user_id FK -> users.id.
+- refresh_token_hash UNIQUE.
+- Revoked or expired sessions cannot be refreshed.
+
+
+TABLE 03: customers
 --------------------
 Purpose:
 Represents a B2B customer/account.
@@ -185,7 +212,7 @@ Fields:
 - created_at: TIMESTAMPTZ NOT NULL
 - updated_at: TIMESTAMPTZ NOT NULL
 
-TABLE 03: customer_tiers
+TABLE 04: customer_tiers
 -------------------------
 Purpose:
 Configurable customer tiers used for pricing and discount governance.
@@ -204,7 +231,7 @@ Fields:
 - created_at: TIMESTAMPTZ NOT NULL
 - updated_at: TIMESTAMPTZ NOT NULL
 
-TABLE 04: product_categories
+TABLE 05: product_categories
 ----------------------------
 Purpose:
 Product/service categories used for catalog organization and category-level
@@ -222,7 +249,7 @@ Fields:
 - created_at: TIMESTAMPTZ NOT NULL
 - updated_at: TIMESTAMPTZ NOT NULL
 
-TABLE 05: products
+TABLE 06: products
 ------------------
 Purpose:
 Main product/service catalog and source of base pricing/cost/margin data.
@@ -253,7 +280,7 @@ Fields:
 - created_at: TIMESTAMPTZ NOT NULL
 - updated_at: TIMESTAMPTZ NOT NULL
 
-TABLE 06: product_variants
+TABLE 07: product_variants
 --------------------------
 Purpose:
 Represents simple product variants such as Size=Large or Pack=10.
@@ -276,7 +303,7 @@ Fields:
 - created_at: TIMESTAMPTZ NOT NULL
 - updated_at: TIMESTAMPTZ NOT NULL
 
-TABLE 07: price_lists
+TABLE 08: price_lists
 ---------------------
 Purpose:
 Defines customer-tier/currency-specific pricing collections.
@@ -295,7 +322,7 @@ Fields:
 - created_at: TIMESTAMPTZ NOT NULL
 - updated_at: TIMESTAMPTZ NOT NULL
 
-TABLE 08: price_list_items
+TABLE 09: price_list_items
 --------------------------
 Purpose:
 Stores individual product/variant prices within a price list.
@@ -314,7 +341,7 @@ Fields:
 - created_at: TIMESTAMPTZ NOT NULL
 - updated_at: TIMESTAMPTZ NOT NULL
 
-TABLE 09: discount_rules
+TABLE 10: discount_rules
 ------------------------
 Purpose:
 Stores configurable discount ceilings based on customer tier and/or
@@ -344,7 +371,7 @@ Rule interpretation:
 - The exact rule precedence algorithm is a backend implementation decision,
   but it must support customer-tier and category-specific ceilings.
 
-TABLE 10: approval_policies
+TABLE 11: approval_policies
 ---------------------------
 Purpose:
 Defines configurable risk-score ranges and the approval levels required
@@ -375,7 +402,7 @@ Important:
 Approval policy is configuration. Approval execution is represented by
 approval_instances and approval_steps.
 
-TABLE 11: approval_instances
+TABLE 12: approval_instances
 ----------------------------
 Purpose:
 Represents one actual approval workflow execution for a quotation.
@@ -403,7 +430,7 @@ Important:
 A quotation may have multiple approval_instances over its lifecycle because
 customer negotiation can cause re-approval.
 
-TABLE 12: approval_steps
+TABLE 13: approval_steps
 ------------------------
 Purpose:
 Represents each reviewer action within an approval instance.
@@ -432,7 +459,7 @@ Fields:
 - updated_at: TIMESTAMPTZ NOT NULL
   Purpose: Last update.
 
-TABLE 13: quotations
+TABLE 14: quotations
 --------------------
 Purpose:
 Central commercial document and core sales aggregate.
@@ -494,7 +521,7 @@ Important:
 - FastAPI must recalculate them whenever relevant quotation data changes.
 - quotation lines retain relevant pricing/risk snapshots for auditability.
 
-TABLE 14: quotation_lines
+TABLE 15: quotation_lines
 -------------------------
 Purpose:
 Individual products/services/subscriptions contained in a quotation.
@@ -539,7 +566,7 @@ Important:
 allowed_discount_percent and discount_excess_percent are snapshots needed
 for auditability and risk explanation.
 
-TABLE 15: orders
+TABLE 16: orders
 ----------------
 Purpose:
 Represents a confirmed sales order originating from a quotation.
@@ -575,7 +602,7 @@ No separate order_lines table is required for the hackathon. The confirmed
 quotation and quotation_lines remain the commercial line source. This avoids
 duplication and synchronization complexity.
 
-TABLE 16: recommendation_rules
+TABLE 17: recommendation_rules
 ------------------------------
 Purpose:
 Simple configurable upsell/cross-sell relationships used to rank suggestions.
@@ -609,7 +636,7 @@ Important:
 Advanced ML recommendation infrastructure is out of scope. This table is
 sufficient for deterministic ranking using configured rules/signals.
 
-TABLE 17: warehouses
+TABLE 18: warehouses
 --------------------
 Purpose:
 Represents physical fulfillment warehouses/depot locations.
@@ -632,7 +659,7 @@ Fields:
 - created_at: TIMESTAMPTZ NOT NULL
 - updated_at: TIMESTAMPTZ NOT NULL
 
-TABLE 18: inventory
+TABLE 19: inventory
 -------------------
 Purpose:
 Current product stock by warehouse.
@@ -661,7 +688,7 @@ Constraint:
 Derived:
 available_stock = quantity_on_hand - quantity_reserved
 
-TABLE 19: fulfillment_allocations
+TABLE 20: fulfillment_allocations
 ---------------------------------
 Purpose:
 Represents the warehouse-level allocation of an order line.
@@ -691,7 +718,7 @@ Fields:
 - created_at: TIMESTAMPTZ NOT NULL
 - updated_at: TIMESTAMPTZ NOT NULL
 
-TABLE 20: backorders
+TABLE 21: backorders
 --------------------
 Purpose:
 Represents quantities that cannot currently be fulfilled because inventory
@@ -716,7 +743,7 @@ Fields:
 - created_at: TIMESTAMPTZ NOT NULL
 - updated_at: TIMESTAMPTZ NOT NULL
 
-TABLE 21: subscription_plans
+TABLE 22: subscription_plans
 ----------------------------
 Purpose:
 Configurable recurring billing plans.
@@ -748,7 +775,7 @@ The exact proration formula, cancellation rule details, and refund behavior
 are implementation/configuration decisions because the requirements do not
 prescribe exact formulas.
 
-TABLE 22: subscriptions
+TABLE 23: subscriptions
 -----------------------
 Purpose:
 Represents an actual recurring subscription created from a confirmed order.
@@ -780,7 +807,7 @@ Fields:
 - created_at: TIMESTAMPTZ NOT NULL
 - updated_at: TIMESTAMPTZ NOT NULL
 
-TABLE 23: billing_schedules
+TABLE 24: billing_schedules
 ---------------------------
 Purpose:
 Stores recurring billing events/schedule entries generated for subscriptions.
@@ -802,7 +829,7 @@ Fields:
 - created_at: TIMESTAMPTZ NOT NULL
 - updated_at: TIMESTAMPTZ NOT NULL
 
-TABLE 24: invoices
+TABLE 25: invoices
 ------------------
 Purpose:
 Represents one-time invoices, recurring invoices, and credit notes.
@@ -843,7 +870,7 @@ Billing model:
   invoice_type = RECURRING.
 - Credit note: invoice_type = CREDIT_NOTE.
 
-TABLE 25: payments
+TABLE 26: payments
 ------------------
 Purpose:
 Records payments made against invoices.
@@ -872,7 +899,7 @@ Invoice status calculation:
 - paid_amount > 0 and paid_amount < total_amount -> PARTIALLY_PAID
 - paid_amount = 0 after issuance -> ISSUED
 
-TABLE 26: negotiation_requests
+TABLE 27: negotiation_requests
 ------------------------------
 Purpose:
 Stores customer requests to change or renegotiate a quotation.
@@ -903,7 +930,7 @@ When a negotiation changes commercial terms, FastAPI must recalculate
 pricing, margin, discount risk, and approval requirements. If thresholds are
 exceeded, a new approval_instance must be created.
 
-TABLE 27: negotiation_comments
+TABLE 28: negotiation_comments
 ------------------------------
 Purpose:
 Stores customer/internal comments and line-level questions associated with
@@ -923,7 +950,7 @@ Fields:
 - created_at: TIMESTAMPTZ NOT NULL
 - updated_at: TIMESTAMPTZ NOT NULL
 
-TABLE 28: deal_alerts
+TABLE 29: deal_alerts
 ---------------------
 Purpose:
 Stores actionable deal-health/anomaly alerts.
@@ -959,7 +986,7 @@ Important:
 A separate deal_health table is intentionally NOT created. Deal health is
 derived from quotation activity, risk, fulfillment state, and alerts.
 
-TABLE 29: audit_logs
+TABLE 30: audit_logs
 --------------------
 Purpose:
 Cross-cutting audit trail for important business actions and changes.
@@ -1272,7 +1299,7 @@ INDEXING REQUIREMENTS
 Recommended indexes:
 
 users:
-- auth_user_id UNIQUE
+- password_hash UNIQUE
 - email UNIQUE
 
 customers:
@@ -1458,7 +1485,10 @@ RESOLVED
 CORE CONSTRAINTS / INVARIANTS
 ======================================================================
 
-1. Every quotation must belong to exactly one customer.
+1. Every authentication session must belong to exactly one user.
+2. A refresh token must be represented only by its hash in auth_sessions.
+3. Revoked or expired authentication sessions cannot be refreshed.
+4. Every quotation must belong to exactly one customer.
 
 2. Every quotation must have exactly one responsible sales representative.
 
@@ -1599,7 +1629,7 @@ When using this document for future technical artifacts:
 2. Do not introduce additional tables merely because they are common in
    CRM/ERP systems.
 
-3. Do not remove any of the 29 finalized tables without explaining which
+3. Do not remove any of the 30 finalized tables without explaining which
    requirement becomes harder or impossible to satisfy.
 
 4. Preserve the distinction between:
@@ -1638,7 +1668,7 @@ When using this document for future technical artifacts:
 FINAL SCHEMA CHECK
 ======================================================================
 
-TABLE COUNT: 29
+TABLE COUNT: 30
 
 CORE QUOTATION FLOW:
 customers
@@ -1682,5 +1712,5 @@ deal_alerts
 audit_logs
 
 The schema is considered complete for the finalized DealFlow360 hackathon
-scope when all 29 tables and their stated relationships are implemented,
+scope when all 30 tables and their stated relationships are implemented,
 with business rules enforced by the FastAPI backend.

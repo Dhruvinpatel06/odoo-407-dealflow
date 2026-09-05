@@ -9,12 +9,14 @@ Complete in order unless a dependency requires otherwise.
 - [ ] SQLAlchemy 2.x
 - [ ] FastAPI app
 - [ ] exceptions/logging
-- [ ] Supabase JWT verification
+- [ ] Manual password hashing + JWT access-token verification
+- [ ] PostgreSQL auth_sessions model + migration
+- [ ] Manual auth login/refresh/logout/me
 - [ ] role/customer authorization
 - [ ] `/api/v1` router
 
 ## Phase 2 — Database
-- [ ] All 29 SQLAlchemy models
+- [ ] All 30 SQLAlchemy models
 - [ ] enums/relationships/constraints/indexes
 - [ ] Initial Alembic migration
 - [ ] Apply and verify migration

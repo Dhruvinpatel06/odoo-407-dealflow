@@ -42,19 +42,21 @@ Important:
 - Supabase PostgreSQL is NOT the application database.
 - The backend connects to and operates against the project PostgreSQL instance
   directly.
-- Supabase Auth may still use Supabase-managed infrastructure internally; this
-  does not make Supabase the application's database provider.
+- Authentication is fully owned by the FastAPI application and PostgreSQL session state.
 
 4. AUTHENTICATION
 -----------------
 Authentication Provider:
-- Supabase Auth
+- FastAPI-owned manual authentication
 
 Responsibilities:
-- Supabase Auth owns authentication and credential-related flows.
-- FastAPI validates Supabase-issued JWTs.
+- FastAPI owns authentication and credential-related flows.
+- Passwords are stored as Argon2id hashes.
+- FastAPI issues short-lived JWT access tokens.
+- Refresh tokens are opaque, high-entropy tokens stored only as hashes in PostgreSQL `auth_sessions`.
+- Refresh tokens are rotated and sessions are revocable.
 - FastAPI owns application-level authorization and business rules.
-- No second independent password/authentication system is introduced.
+- No external authentication provider is used.
 
 5. REALTIME
 -----------
@@ -111,7 +113,7 @@ Application Database:
 - PostgreSQL managed separately from Supabase.
 
 Authentication:
-- Supabase Auth
+- FastAPI-owned manual authentication
 
 Realtime:
 - Not required for the core implementation.
@@ -151,7 +153,7 @@ Database:
 - PostgreSQL (direct/self-managed)
 
 Authentication:
-- Supabase Auth
+- FastAPI-owned manual authentication
 
 Realtime:
 - Not required for core implementation
@@ -181,7 +183,7 @@ Application Database:
 PostgreSQL
 
 Authentication:
-Frontend <-> Supabase Auth
+Frontend <-> FastAPI manual authentication
                   |
                   | Supabase JWT
                   v
@@ -196,7 +198,7 @@ Updated database approach:
 - Direct/self-managed PostgreSQL
 
 Authentication:
-- Supabase Auth remains unchanged.
+- FastAPI-owned manual authentication remains unchanged.
 
 Realtime:
 - Supabase Realtime is no longer a required core dependency because the
@@ -222,4 +224,4 @@ Unchanged:
 Reason for this change:
 - PostgreSQL will be implemented and managed directly by the project to satisfy
   the evaluator's recommendation and reduce dependence on Supabase's managed
-  database layer, while retaining Supabase Auth for authentication.
+  database layer, while removing the external authentication dependency and owning authentication inside FastAPI.

@@ -28,12 +28,12 @@ Do not silently change a finalized decision. If implementation exposes a conflic
 - SQLAlchemy 2.x
 - Alembic
 - PostgreSQL directly/self-managed
-- Supabase Auth for authentication only
+- FastAPI-owned manual authentication with PostgreSQL-backed sessions
 - REST/JSON
 - Modular Monolith
 - Pytest
 
-Do NOT introduce Redis, Kafka, Celery, Kubernetes, GraphQL, microservices, a second auth system, Supabase-managed PostgreSQL, or Supabase Realtime as a core dependency.
+Do NOT introduce Redis, Kafka, Celery, Kubernetes, GraphQL, microservices, a separate authentication service, Supabase-managed PostgreSQL, or Supabase Realtime as a core dependency.
 
 ## Backend architecture
 Use:
@@ -48,7 +48,7 @@ Router -> Auth/Authorization -> Pydantic Schema -> Service -> Engine -> Reposito
 - Audit is cross-cutting and is invoked by business operations.
 
 ## Database invariants
-The finalized schema has exactly 29 application tables.
+The finalized schema has exactly 30 application tables, including the authentication session table.
 - UUID primary keys.
 - TIMESTAMPTZ for timestamps.
 - NUMERIC for money/percentages/quantities.
@@ -78,9 +78,18 @@ FastAPI is authoritative for:
 Never trust frontend-supplied authoritative price, totals, margin, risk, approval state, inventory availability, invoice status, or customer ownership.
 
 ## Authentication and authorization
-Supabase Auth owns credentials and authentication flows.
-FastAPI must validate Supabase JWTs, resolve the application user, enforce role permissions, and enforce customer ownership on `/api/v1/portal/*`.
-Never implement a second password/authentication system.
+Authentication is owned by the DealFlow360 FastAPI application.
+
+- Passwords are stored only as Argon2id password hashes.
+- Access tokens are short-lived JWTs.
+- Refresh tokens are opaque high-entropy tokens stored only as hashes in `auth_sessions`.
+- Refresh tokens are rotated on refresh.
+- Logout revokes the current authentication session.
+- FastAPI validates access JWTs, resolves the application user from `users.id`, enforces `is_active`, role permissions, and customer ownership.
+- The refresh token is transported through a secure HttpOnly cookie.
+- Never store plaintext passwords or raw refresh tokens.
+- Never allow client input to assign privileged roles.
+- Do not introduce FastAPI manual authentication or another external authentication provider.
 
 ## Implementation behavior
 Before coding:

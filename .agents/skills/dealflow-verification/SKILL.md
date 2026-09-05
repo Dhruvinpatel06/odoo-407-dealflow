@@ -12,7 +12,7 @@ Procedure:
 3. Run narrow relevant unit tests.
 4. Run relevant API/integration tests.
 5. Verify migrations when models/schema changed.
-6. Verify auth/authorization for affected endpoints.
+6. Verify authentication/authorization for affected endpoints, including token expiry, disabled-user rejection, and session revocation when auth is affected.
 7. Exercise the applicable acceptance flow.
 8. Report pass/fail results and unresolved issues.
 

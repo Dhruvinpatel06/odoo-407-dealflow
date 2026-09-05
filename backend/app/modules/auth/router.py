@@ -11,12 +11,32 @@ from app.modules.auth.schemas import (
     ChangePasswordRequest,
     LoginRequest,
     MessageResponse,
+    SignupRequest,
     TokenResponse,
     UserResponse,
 )
 from app.modules.auth.service import auth_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+@router.post(
+    "/signup",
+    response_model=UserResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Customer Public Signup",
+)
+def signup(
+    request: SignupRequest,
+    db: Session = Depends(get_db),
+) -> UserResponse:
+    """
+    Public customer registration.
+    Creates a new user with role=CUSTOMER, active=True, and customer_id=None.
+    Client-supplied role is not permitted.
+    """
+    user = auth_service.signup(db=db, request=request)
+    return UserResponse.model_validate(user)
 
 
 def _set_refresh_cookie(response: Response, token: str) -> None:

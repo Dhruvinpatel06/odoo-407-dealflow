@@ -5,8 +5,9 @@ from typing import Optional, Tuple
 
 from sqlalchemy.orm import Session
 
+from app.common.enums import UserRole
 from app.core.config import settings
-from app.core.exceptions import UnauthorizedError
+from app.core.exceptions import DealFlowException, UnauthorizedError
 from app.core.security import (
     create_access_token,
     generate_refresh_token,
@@ -16,11 +17,39 @@ from app.core.security import (
 )
 from app.models.user import User
 from app.modules.auth.repository import auth_repository
-from app.modules.auth.schemas import ChangePasswordRequest, LoginRequest, TokenResponse
+from app.modules.auth.schemas import (
+    ChangePasswordRequest,
+    LoginRequest,
+    SignupRequest,
+    TokenResponse,
+)
+from app.modules.users.repository import user_repository
 
 
 class AuthService:
     """Coordinates authentication workflows, token lifecycles, and session state."""
+
+    def signup(self, db: Session, request: SignupRequest) -> User:
+        """
+        Public customer signup workflow.
+        Always assigns role=CUSTOMER, active=True, and customer_id=None.
+        Rejects duplicate emails and hashes password with Argon2id.
+        """
+        cleaned_email = request.email.strip().lower()
+        existing = user_repository.get_by_email(db, cleaned_email)
+        if existing:
+            raise DealFlowException("A user with this email already exists", status_code=400)
+
+        password_hash = hash_password(request.password)
+        return user_repository.create_user(
+            db=db,
+            name=request.name,
+            email=cleaned_email,
+            password_hash=password_hash,
+            role=UserRole.CUSTOMER,
+            customer_id=None,
+            is_active=True,
+        )
 
     def login(self, db: Session, request: LoginRequest) -> Tuple[TokenResponse, str]:
         """Authenticate user credentials, initiate session, and return access/refresh tokens."""

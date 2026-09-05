@@ -179,16 +179,17 @@ export interface NavItemConfig {
 }
 
 export function getRoleNavItems(
-  role: UserRole, 
+  role: UserRole | string, 
   pendingApprovalsCount: number, 
   activeAlertsCount: number
 ): NavItemConfig[] {
-  const perms = ROLE_PERMISSIONS[role] || ROLE_PERMISSIONS.SALES_REP;
+  const normalizedRole = (role ? String(role).toUpperCase() : '') as UserRole;
+  const perms = ROLE_PERMISSIONS[normalizedRole] || ROLE_PERMISSIONS.SALES_REP;
 
   const items: NavItemConfig[] = [
     { 
       id: 'dashboard', 
-      label: role === 'SALES_REP' ? 'My Pipeline' : role === 'SALES_MANAGER' ? 'Team Dashboard' : 'Dashboard', 
+      label: normalizedRole === 'SALES_REP' ? 'My Pipeline' : normalizedRole === 'SALES_MANAGER' ? 'Team Dashboard' : 'Dashboard', 
       icon: LayoutDashboard 
     },
     { 
@@ -200,7 +201,7 @@ export function getRoleNavItems(
   ];
 
   // For Sales Manager: Show Approvals PROMINENTLY directly at the top with highlight!
-  if (role === 'SALES_MANAGER') {
+  if (normalizedRole === 'SALES_MANAGER') {
     items.splice(1, 0, {
       id: 'approvals',
       label: 'Approvals Queue',
@@ -212,20 +213,20 @@ export function getRoleNavItems(
   } else if (perms.canAccessApprovals) {
     items.push({
       id: 'approvals',
-      label: role === 'SALES_REP' ? 'My Submitted Approvals' : 'Approval Center',
+      label: normalizedRole === 'SALES_REP' ? 'My Submitted Approvals' : 'Approval Center',
       icon: CheckCircle2,
       alertBadge: pendingApprovalsCount > 0 ? `${pendingApprovalsCount}` : undefined,
-      roleNote: role === 'SALES_REP' ? 'Submitter View' : 'Tier 2 Finance'
+      roleNote: normalizedRole === 'SALES_REP' ? 'Submitter View' : 'Tier 2 Finance'
     });
   }
 
   if (perms.canAccessFulfillment) {
     items.push({ 
       id: 'fulfillment', 
-      label: role === 'SALES_REP' ? 'Fulfillment Tracking' : 'Fulfillment', 
+      label: normalizedRole === 'SALES_REP' ? 'Fulfillment Tracking' : 'Fulfillment', 
       icon: Truck, 
       badge: '1',
-      roleNote: role === 'SALES_REP' ? 'View-Only' : undefined
+      roleNote: normalizedRole === 'SALES_REP' ? 'View-Only' : undefined
     });
   }
 
@@ -247,7 +248,7 @@ export function getRoleNavItems(
   }
 
   // Sales Manager limited governance area (Requirements Section 14)
-  if (role === 'SALES_MANAGER' && perms.canAccessManagerGovernance) {
+  if (normalizedRole === 'SALES_MANAGER' && perms.canAccessManagerGovernance) {
     items.push({
       id: 'manager-governance',
       label: 'Governance Policies',
@@ -273,8 +274,9 @@ export function getRoleNavItems(
 }
 
 
-export function getRoleMeta(role: UserRole) {
-  switch (role) {
+export function getRoleMeta(role: UserRole | string) {
+  const normalizedRole = (role ? String(role).toUpperCase() : '') as UserRole;
+  switch (normalizedRole) {
     case 'SALES_REP':
       return {
         label: 'Sales Representative',

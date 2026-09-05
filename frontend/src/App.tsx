@@ -1,7 +1,6 @@
 import React from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Sidebar } from './components/layout/Sidebar';
-import { Topbar } from './components/layout/Topbar';
 import { DashboardView } from './components/dashboard/DashboardView';
 import { QuotationsList } from './components/quotations/QuotationsList';
 import { QuoteBuilder } from './components/quotations/QuoteBuilder';
@@ -73,7 +72,7 @@ const AppContent: React.FC = () => {
   // Standard Internal Enterprise Layout
   const renderCurrentPage = () => {
     // RBAC: If a non-admin attempts to view the Administration page, display access restriction
-    if ((currentPage === 'admin' || currentPage === 'admin-config') && currentUser.role !== 'ADMIN') {
+    if ((currentPage === 'admin' || currentPage === 'admin-config') && (currentUser.role || '').toUpperCase() !== 'ADMIN') {
       return (
         <AccessRestrictedView 
           requiredRole="Platform Administrator (Alex Mercer)" 
@@ -118,8 +117,6 @@ const AppContent: React.FC = () => {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <Topbar />
-        
         <main className="flex-1 overflow-y-auto bg-[#F9FAFB]">
           {renderCurrentPage()}
         </main>

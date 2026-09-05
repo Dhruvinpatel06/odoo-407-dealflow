@@ -177,7 +177,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               id: me.id || prev.id,
               name: me.name || prev.name,
               email: me.email || prev.email,
-              role: (me.role as UserRole) || prev.role,
+              role: (me.role ? (String(me.role).toUpperCase() as UserRole) : prev.role),
               customerId: (me.customer_id || me.customerId) ?? prev.customerId,
             }));
           }
@@ -282,7 +282,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         id: userInfo.id || prev.id,
         name: userInfo.name || userInfo.email.split('@')[0],
         email: userInfo.email,
-        role: (userInfo.role as UserRole) || prev.role || 'SALES_REP',
+        role: (userInfo.role ? (String(userInfo.role).toUpperCase() as UserRole) : prev.role || 'SALES_REP'),
         title: userInfo.title || prev.title,
         department: userInfo.department || prev.department,
         customerId: (userInfo.customer_id || userInfo.customerId) ?? prev.customerId

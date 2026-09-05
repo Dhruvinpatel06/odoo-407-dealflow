@@ -6,7 +6,6 @@ import {
   MessageSquare, 
   DollarSign, 
   ShieldCheck, 
-  ArrowLeft, 
   HelpCircle,
   FileText,
   Clock,
@@ -122,17 +121,6 @@ export const CustomerPortal: React.FC = () => {
                 )}
               </div>
             </div>
-
-            <button
-              onClick={() => {
-                setUserRole('SALES_REP');
-                setCurrentPage('dashboard');
-              }}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-xs font-semibold text-slate-700 transition cursor-pointer"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Return to Internal Sales Workspace</span>
-            </button>
 
             <button
               onClick={() => {

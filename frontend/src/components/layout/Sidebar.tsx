@@ -1,21 +1,11 @@
 import React from 'react';
 import { 
-  LayoutDashboard, 
-  FileText, 
   CheckCircle2, 
-  Truck, 
-  CreditCard, 
-  Activity, 
-  BarChart3, 
-  Settings, 
-  ShieldCheck, 
-  ExternalLink,
   ChevronRight,
-  Sparkles,
-  Users
+  ExternalLink,
+  Sparkles
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { UserRole } from '../../types';
 import { getRoleNavItems, getRoleMeta } from '../../utils/rbac';
 
 export const Sidebar: React.FC = () => {
@@ -23,10 +13,10 @@ export const Sidebar: React.FC = () => {
     currentPage, 
     setCurrentPage, 
     currentUser, 
-    setUserRole, 
     approvals, 
     dealAlerts,
-    setIsGuideOpen 
+    setIsGuideOpen,
+    logout 
   } = useApp();
 
   const pendingApprovalsCount = approvals.filter(a => a.status === 'PENDING').length;
@@ -34,6 +24,8 @@ export const Sidebar: React.FC = () => {
 
   const navItems = getRoleNavItems(currentUser.role, pendingApprovalsCount, activeAlertsCount);
   const roleMeta = getRoleMeta(currentUser.role);
+  const isUserAdmin = (currentUser.role || '').toUpperCase() === 'ADMIN';
+  const displayRole = currentUser.role ? currentUser.role.toLowerCase() : 'admin';
 
   return (
     <aside className="w-[240px] bg-white border-r border-gray-200 flex flex-col h-screen shrink-0 select-none">
@@ -51,20 +43,30 @@ export const Sidebar: React.FC = () => {
         </div>
       </div>
 
-      {/* Role Pill Indicator in Sidebar */}
+      {/* Role Pill Indicator in Sidebar (Clickable for Administrator) */}
       <div className="px-5 pb-3">
-        <div className={`p-2 rounded-lg border text-[11px] flex items-center justify-between ${roleMeta.badgeColor}`}>
+        <button
+          type="button"
+          onClick={() => {
+            if (isUserAdmin) {
+              setCurrentPage('admin');
+            }
+          }}
+          className={`w-full p-2 rounded-lg border text-[11px] flex items-center justify-between transition cursor-pointer hover:opacity-90 ${roleMeta.badgeColor}`}
+          title={isUserAdmin ? "Go to Administration" : roleMeta.label}
+        >
           <div className="flex items-center gap-1.5 font-bold truncate">
             <span className={`w-2 h-2 rounded-full shrink-0 ${roleMeta.badgeDot}`}></span>
             <span className="truncate">{roleMeta.label}</span>
           </div>
           <span className="text-[10px] font-mono opacity-80 shrink-0">RBAC</span>
-        </div>
+        </button>
       </div>
 
       {/* Quick Test Guide Trigger Banner */}
       <div className="px-4 pb-2">
         <button
+          type="button"
           onClick={() => setIsGuideOpen(true)}
           className="w-full flex items-center justify-between px-3 py-2 rounded-md bg-blue-50/70 hover:bg-blue-100/80 border border-blue-200 text-[#2563EB] text-xs font-semibold transition group shadow-2xs cursor-pointer"
         >
@@ -89,6 +91,7 @@ export const Sidebar: React.FC = () => {
           return (
             <button
               key={item.id}
+              type="button"
               onClick={() => setCurrentPage(item.id)}
               className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-xs transition-colors cursor-pointer ${
                 isActive
@@ -133,8 +136,9 @@ export const Sidebar: React.FC = () => {
           External Experience
         </div>
         <button
+          type="button"
           onClick={() => {
-            setUserRole('CUSTOMER_PORTAL');
+            setCurrentPage('portal');
           }}
           className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-xs font-medium transition cursor-pointer border ${
             currentPage === 'portal'
@@ -152,48 +156,24 @@ export const Sidebar: React.FC = () => {
         </button>
       </nav>
 
-      {/* Role Switcher & Persona Bar matching Editorial Aesthetic */}
+      {/* Authenticated Current User Card with Sign Out */}
       <div className="p-4 border-t border-gray-100">
-        <div className="flex items-center justify-between mb-2 px-1">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1">
-            <Users className="w-3 h-3 text-gray-400" /> Role Persona
-          </span>
-          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-gray-100 text-[#2563EB] font-medium">
-            FastAPI Mock
-          </span>
-        </div>
-
-        {/* Quick Persona Switcher */}
-        <select
-          value={currentUser.role}
-          onChange={(e) => setUserRole(e.target.value as UserRole)}
-          className="w-full bg-gray-50 hover:bg-white border border-gray-200 text-xs text-gray-800 rounded-md p-1.5 focus:outline-hidden focus:ring-2 focus:ring-blue-500 font-medium cursor-pointer transition"
-        >
-          <option value="SALES_REP">Sales Rep (Sarah Chen)</option>
-          <option value="SALES_MANAGER">Sales Manager (Marcus Vance)</option>
-          <option value="FINANCE_OPERATIONS">Finance / Ops (Elena Rostova)</option>
-          <option value="FULFILLMENT_OPERATOR">Fulfillment (Carlos Ruiz)</option>
-          <option value="CUSTOMER_PORTAL">Customer (David Kross)</option>
-          <option value="ADMIN">Platform Admin (Alex Mercer)</option>
-        </select>
-
-        {/* Current User Card */}
-        <div className="mt-3 flex items-center gap-3 p-2 bg-gray-50 rounded-lg border border-gray-100">
-          <img
-            src={currentUser.avatar}
-            alt={currentUser.name}
-            className="w-8 h-8 rounded-full object-cover border border-gray-200 shrink-0"
-          />
+        <div className="p-2.5 bg-gray-50 rounded-lg border border-gray-100 flex items-center justify-between gap-2">
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-bold truncate text-[#111827]">{currentUser.name}</p>
-            <p className="text-[10px] text-gray-500 uppercase tracking-wider truncate">{currentUser.title}</p>
+            <p className="text-xs font-bold truncate text-[#111827]">
+              {currentUser.name || 'User'}
+            </p>
+            <p className="text-[11px] text-gray-500 font-medium truncate">
+              {displayRole}
+            </p>
           </div>
-          <button 
-            onClick={() => setCurrentPage('login')}
-            title="Log out or switch account"
-            className="text-gray-400 hover:text-gray-700 p-1 rounded hover:bg-gray-200/60 transition cursor-pointer"
+          <button
+            type="button"
+            onClick={logout}
+            className="shrink-0 px-2.5 py-1 text-[11px] font-semibold text-gray-600 hover:text-red-600 bg-white hover:bg-red-50 border border-gray-200 hover:border-red-200 rounded-md transition cursor-pointer shadow-2xs"
+            title="Sign Out"
           >
-            <Settings className="w-3.5 h-3.5" />
+            Sign Out
           </button>
         </div>
       </div>

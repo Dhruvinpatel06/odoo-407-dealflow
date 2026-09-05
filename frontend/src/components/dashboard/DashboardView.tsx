@@ -376,80 +376,113 @@ export const DashboardView: React.FC = () => {
           </div>
         </div>
 
-        {/* Right Column (1 Col): Signature Dark DealFlow Intelligence Card tailored to Role */}
-        <div className="bg-[#111827] text-white rounded-xl shadow-xl p-6 flex flex-col border border-slate-800">
-          <div className="flex items-center gap-2 mb-6">
-            <div className="p-1.5 bg-blue-600 rounded-md">
-              <Sparkles className="w-4 h-4 text-white" />
+        {/* Right Column (1 Col): DealFlow Intelligence Light SaaS Card */}
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex flex-col">
+          {/* Header */}
+          <div className="flex items-center justify-between pb-3.5 border-b border-gray-100 mb-4">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-blue-50 text-[#2563EB] flex items-center justify-center shrink-0 border border-blue-100">
+                <Sparkles className="w-3.5 h-3.5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-sm text-gray-900 tracking-tight">DealFlow Intelligence</h3>
+                <p className="text-[11px] text-gray-500">
+                  AI-powered insights for your deals
+                </p>
+              </div>
             </div>
-            <div>
-              <h3 className="font-bold text-sm tracking-wide uppercase text-white">DealFlow Intelligence</h3>
-              <span className="text-[10px] text-slate-400 font-mono">
-                {role === 'SALES_REP' && 'Representative Guidance'}
-                {role === 'SALES_MANAGER' && 'Governance Radar'}
-                {role === 'FINANCE_OPERATIONS' && 'Financial Risk Guard'}
-                {role === 'ADMIN' && 'Policy Engine Health'}
-              </span>
-            </div>
+            <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded bg-gray-100 text-gray-600 border border-gray-200">
+              {role === 'SALES_REP' && 'Guidance'}
+              {role === 'SALES_MANAGER' && 'Radar'}
+              {role === 'FINANCE_OPERATIONS' && 'Risk Guard'}
+              {role === 'ADMIN' && 'Policy Engine'}
+            </span>
           </div>
 
-          <div className="flex-1 space-y-5">
+          <div className="flex-1 space-y-4">
             {/* Intelligence Alert */}
-            <div className="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
-              <div className="flex justify-between items-start mb-2">
-                <p className="text-xs font-bold text-slate-400 uppercase">
-                  {role === 'SALES_REP' ? 'Submission Alert' : 'Governance Alert'}
-                </p>
-                <span className="px-1.5 py-0.5 bg-red-500 text-[10px] font-bold rounded text-white">HIGH RISK</span>
+            <div className="bg-rose-50/50 p-4 rounded-xl border border-rose-200/80 space-y-2.5">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                  <span className="text-xs font-bold text-rose-950 uppercase tracking-wide">
+                    {role === 'SALES_REP' ? 'Submission Alert' : 'Governance Alert'}
+                  </span>
+                </div>
+                <span className="px-2 py-0.5 bg-rose-100 text-rose-700 border border-rose-200 text-[10px] font-bold rounded-full uppercase">
+                  High Risk
+                </span>
               </div>
-              <p className="text-sm leading-snug text-slate-200">
+
+              <p className="text-xs text-rose-950/90 leading-relaxed font-normal">
                 {role === 'SALES_REP' 
                   ? 'NovaTech (QT-9405) discount exceeds Gold tier limit by 8.5%. Awaiting Marcus Vance.'
                   : 'Novatech (QT-9405) discount exceeds tier ceiling by 8.5%.'}
               </p>
-              <div className="mt-3 p-2 bg-slate-900 rounded border border-slate-700 text-[11px] text-slate-300 italic">
-                {role === 'SALES_REP' 
-                  ? '"Tip: Adding a bundled support contract can reduce risk score below approval trigger."' 
-                  : '"Margin impact reduces net profit below corporate target. Level 1 approval required."'}
+
+              <div className="p-2.5 bg-white/90 rounded-lg border border-rose-200/60 text-[11px] text-slate-600">
+                <span className="font-semibold text-rose-900 mr-1">Tip:</span>
+                <span>
+                  {role === 'SALES_REP' 
+                    ? 'Adding a bundled support contract can reduce risk score below approval trigger.' 
+                    : 'Margin impact reduces net profit below corporate target. Level 1 approval required.'}
+                </span>
               </div>
             </div>
 
             {/* Smart Recommendation */}
-            <div className="p-4 border border-blue-500/30 bg-blue-500/5 rounded-lg">
-              <p className="text-xs font-bold text-blue-400 uppercase mb-2">Smart Upsell Strategy</p>
-              <p className="text-sm text-slate-200">
-                Add <span className="font-bold text-white">Premium Support Bundle</span> to NovaTech to offset margin loss.
+            <div className="p-4 rounded-xl border border-blue-200/70 bg-blue-50/40 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-blue-900 uppercase tracking-wide">
+                  Smart Upsell Strategy
+                </span>
+                <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                  +4.2% Margin Lift
+                </span>
+              </div>
+
+              <p className="text-xs text-slate-700 leading-relaxed">
+                Add <span className="font-semibold text-slate-900">Premium Support Bundle</span> to NovaTech to offset margin loss.
               </p>
-              <div className="mt-3 flex justify-between items-center">
-                <span className="text-xs font-bold text-green-400">+4.2% Margin Lift</span>
+
+              <div className="pt-1 flex justify-end">
                 <button 
                   onClick={() => {
                     setSelectedQuoteId('q-1049');
                     setCurrentPage('quote-builder');
                   }}
-                  className="text-[11px] bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded transition-colors text-white font-medium cursor-pointer"
+                  className="text-xs bg-[#2563EB] hover:bg-blue-700 px-3.5 py-1.5 rounded-lg transition-colors text-white font-semibold shadow-xs cursor-pointer flex items-center gap-1.5"
                 >
-                  Add to Quote
+                  <span>Add to Quote</span>
+                  <ArrowRight className="w-3 h-3" />
                 </button>
               </div>
             </div>
 
-            {/* Health Meter */}
-            <div className="pt-4 border-t border-slate-800">
-              <p className="text-[10px] uppercase font-bold text-slate-500 tracking-widest mb-3">
-                {role === 'SALES_REP' ? 'Quota Velocity' : 'Team Governance Index'}
-              </p>
-              <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+            {/* Quota Velocity */}
+            <div className="p-4 rounded-xl border border-gray-100 bg-gray-50/60 space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+                  {role === 'SALES_REP' ? 'Quota Velocity' : 'Team Governance Index'}
+                </span>
+                <span className="text-xs font-bold font-mono text-[#2563EB]">
+                  {role === 'SALES_REP' ? '92%' : '72%'}
+                </span>
+              </div>
+
+              <div className="w-full h-2 bg-gray-200/80 rounded-full overflow-hidden">
                 <div 
-                  className={`h-full ${role === 'SALES_REP' ? 'bg-emerald-500 w-[92%]' : 'bg-blue-500 w-[72%]'}`}
+                  className="h-full bg-[#2563EB] rounded-full transition-all duration-300"
+                  style={{ width: role === 'SALES_REP' ? '92%' : '72%' }}
                 ></div>
               </div>
-              <div className="flex justify-between mt-2 text-[11px] font-medium">
-                <span className="text-slate-400">
+
+              <div className="flex justify-between items-center text-[11px] text-gray-500">
+                <span>
                   {role === 'SALES_REP' ? 'Target Attainment' : 'Operational Efficiency'}
                 </span>
-                <span className="text-blue-400">
-                  {role === 'SALES_REP' ? '92%' : '72%'}
+                <span className="font-medium text-gray-600">
+                  {role === 'SALES_REP' ? '$124.2k of $135k' : 'Within Threshold'}
                 </span>
               </div>
             </div>

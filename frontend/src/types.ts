@@ -258,3 +258,38 @@ export interface GovernanceConfig {
   };
 }
 
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface AuthUserInfo {
+  id: string;
+  email: string;
+  name?: string;
+  role?: UserRole | string;
+  is_active?: boolean;
+  customerId?: string;
+  customer_id?: string | null;
+  title?: string;
+  department?: string;
+  avatar?: string;
+}
+
+export interface LoginResponse {
+  access_token: string;
+  token_type?: string;
+  expires_in?: number;
+  user?: AuthUserInfo;
+}
+
+export interface RefreshResponse {
+  access_token: string;
+  token_type?: string;
+  expires_in?: number;
+}
+
+export interface LogoutResponse {
+  message?: string;
+  success?: boolean;
+}

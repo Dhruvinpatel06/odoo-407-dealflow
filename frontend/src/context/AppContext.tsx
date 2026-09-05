@@ -16,8 +16,10 @@ import {
   Recommendation,
   AuditLog,
   NegotiationRequest,
-  GovernanceConfig
+  GovernanceConfig,
+  AuthUserInfo
 } from '../types';
+import { authService } from '../services/authService';
 import { 
   mockUsers, 
   mockCustomers,
@@ -59,6 +61,12 @@ interface AppContextType {
   setCurrentPage: (page: string) => void;
   selectedQuoteId: string;
   setSelectedQuoteId: (id: string) => void;
+
+  // Authentication State
+  isAuthenticated: boolean;
+  accessToken: string | null;
+  setAuthSession: (token: string, user?: AuthUserInfo) => void;
+  logout: () => Promise<void>;
   
   // Data
   customers: Customer[];
@@ -143,10 +151,50 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Authentication State
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => authService.isAuthenticated());
+  const [accessToken, setAccessToken] = useState<string | null>(() => authService.getAccessToken());
+
   // Hydrated State with LocalStorage Persistence
   const [currentUser, setCurrentUser] = useState<User>(() => loadFromStorage('dealflow_user', mockUsers[0]));
   const [currentPage, setCurrentPage] = useState<string>(() => loadFromStorage('dealflow_page', 'login'));
   const [selectedQuoteId, setSelectedQuoteId] = useState<string>(() => loadFromStorage('dealflow_quote_id', 'q-1048'));
+
+  // Attempt silent session restore on mount via HttpOnly cookie
+  useEffect(() => {
+    let isMounted = true;
+    const restoreSession = async () => {
+      try {
+        const res = await authService.refresh();
+        if (res.access_token && isMounted) {
+          authService.setAccessToken(res.access_token);
+          setAccessToken(res.access_token);
+          setIsAuthenticated(true);
+          const me = await authService.getMe();
+          if (me && isMounted) {
+            setCurrentUser(prev => ({
+              ...prev,
+              id: me.id || prev.id,
+              name: me.name || prev.name,
+              email: me.email || prev.email,
+              role: (me.role as UserRole) || prev.role,
+              customerId: (me.customer_id || me.customerId) ?? prev.customerId,
+            }));
+          }
+        }
+      } catch {
+        if (isMounted) {
+          setIsAuthenticated(false);
+          setAccessToken(null);
+        }
+      }
+    };
+
+    restoreSession();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
   
   const [customers] = useState<Customer[]>(mockCustomers);
   const [products] = useState<Product[]>(mockProducts);
@@ -222,6 +270,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       showNotification(`Switched active persona to ${userMatch.role.replace('_', ' ')} (${userMatch.name})`, 'info');
     }
+  };
+
+  const setAuthSession = (token: string, userInfo?: AuthUserInfo) => {
+    authService.setAccessToken(token);
+    setAccessToken(token);
+    setIsAuthenticated(true);
+    if (userInfo) {
+      setCurrentUser(prev => ({
+        ...prev,
+        id: userInfo.id || prev.id,
+        name: userInfo.name || userInfo.email.split('@')[0],
+        email: userInfo.email,
+        role: (userInfo.role as UserRole) || prev.role || 'SALES_REP',
+        title: userInfo.title || prev.title,
+        department: userInfo.department || prev.department,
+        customerId: (userInfo.customer_id || userInfo.customerId) ?? prev.customerId
+      }));
+    }
+  };
+
+  const logout = async () => {
+    await authService.logout();
+    setAccessToken(null);
+    setIsAuthenticated(false);
+    setCurrentPage('login');
+    showNotification('You have been signed out.', 'info');
   };
 
   const activeQuotation = quotations.find(q => q.id === selectedQuoteId) || quotations[0];
@@ -1500,6 +1574,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   return (
     <AppContext.Provider value={{
+      isAuthenticated,
+      accessToken,
+      setAuthSession,
+      logout,
       currentUser,
       setCurrentUser,
       setUserRole,

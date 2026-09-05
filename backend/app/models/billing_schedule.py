@@ -1,0 +1,1 @@
+"""BillingSchedule SQLAlchemy model."""

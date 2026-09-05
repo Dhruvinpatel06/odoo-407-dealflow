@@ -1,0 +1,225 @@
+DealFlow360 — TECH STACK
+=============================
+
+Purpose
+-------
+This document defines the finalized technology stack for DealFlow360.
+It contains technology and architecture decisions only. It does not define
+database schema, tables, columns, relationships, or API endpoint specifications.
+
+1. FRONTEND
+-----------
+- React
+- TypeScript
+- Vite
+- Tailwind CSS
+- shadcn/ui
+- TanStack Query
+- Recharts
+
+2. BACKEND
+----------
+- Python
+- FastAPI
+- Pydantic
+- SQLAlchemy 2.x
+- Alembic
+
+3. DATABASE
+-----------
+Database Engine:
+- PostgreSQL
+
+Database Strategy:
+- PostgreSQL is used directly by the backend.
+- The application database is self-managed for this project instead of using
+  Supabase as the managed PostgreSQL database layer.
+- For local development, PostgreSQL should preferably run through Docker.
+- FastAPI accesses PostgreSQL through SQLAlchemy 2.x.
+- Alembic manages application-database schema migrations.
+
+Important:
+- Supabase PostgreSQL is NOT the application database.
+- The backend connects to and operates against the project PostgreSQL instance
+  directly.
+- Supabase Auth may still use Supabase-managed infrastructure internally; this
+  does not make Supabase the application's database provider.
+
+4. AUTHENTICATION
+-----------------
+Authentication Provider:
+- Supabase Auth
+
+Responsibilities:
+- Supabase Auth owns authentication and credential-related flows.
+- FastAPI validates Supabase-issued JWTs.
+- FastAPI owns application-level authorization and business rules.
+- No second independent password/authentication system is introduced.
+
+5. REALTIME
+-----------
+Current Decision:
+- Supabase Realtime is NOT required as part of the core implementation.
+
+Reason:
+- The application's primary PostgreSQL database is now separate from the
+  Supabase-managed database.
+- Supabase Realtime's database-change functionality is designed around a
+  PostgreSQL database connected to the Realtime service.
+- Adding a separately self-hosted Realtime service would increase implementation
+  complexity and is not necessary for the core hackathon scope.
+
+Future Option:
+- Realtime can be added later if required, including self-hosting a compatible
+  Realtime service connected to the project PostgreSQL instance.
+
+6. API
+------
+- REST
+- JSON
+- FastAPI is the authoritative application/business-logic layer.
+- Business rules must not be bypassed by direct frontend-to-database operations.
+
+7. ARCHITECTURE
+---------------
+- Modular Monolith
+
+Principle:
+- One deployable backend application with clear modules separating business
+  capabilities.
+
+8. TESTING
+----------
+- Pytest
+
+Focus:
+- Business-rule correctness
+- Authentication and authorization
+- Critical backend workflows
+- Database interactions
+- Integration/end-to-end behavior where required
+
+9. DEPLOYMENT
+-------------
+Frontend:
+- Vercel
+
+Backend:
+- Render / Railway / Fly.io
+
+Application Database:
+- PostgreSQL managed separately from Supabase.
+
+Authentication:
+- Supabase Auth
+
+Realtime:
+- Not required for the core implementation.
+
+10. EXPLICITLY OUT OF SCOPE
+---------------------------
+- Redis
+- Kafka
+- Celery
+- Kubernetes
+- GraphQL
+- Microservices
+- Separate authentication service
+- Separate message broker
+- Supabase-managed PostgreSQL as the application database
+- Supabase Realtime as a required core dependency
+
+11. FINAL STACK SUMMARY
+-----------------------
+Frontend:
+- React
+- TypeScript
+- Vite
+- Tailwind CSS
+- shadcn/ui
+- TanStack Query
+- Recharts
+
+Backend:
+- Python
+- FastAPI
+- Pydantic
+- SQLAlchemy 2.x
+- Alembic
+
+Database:
+- PostgreSQL (direct/self-managed)
+
+Authentication:
+- Supabase Auth
+
+Realtime:
+- Not required for core implementation
+
+API:
+- REST/JSON
+
+Architecture:
+- Modular Monolith
+
+Testing:
+- Pytest
+
+12. ARCHITECTURAL DATA FLOW
+---------------------------
+Frontend:
+React + TypeScript
+        |
+        | REST/JSON
+        v
+Backend:
+FastAPI
+        |
+        | SQLAlchemy 2.x
+        v
+Application Database:
+PostgreSQL
+
+Authentication:
+Frontend <-> Supabase Auth
+                  |
+                  | Supabase JWT
+                  v
+               FastAPI
+
+13. CHANGE FROM PREVIOUS STACK
+------------------------------
+Previous database approach:
+- Supabase PostgreSQL
+
+Updated database approach:
+- Direct/self-managed PostgreSQL
+
+Authentication:
+- Supabase Auth remains unchanged.
+
+Realtime:
+- Supabase Realtime is no longer a required core dependency because the
+  application database is no longer the Supabase-managed PostgreSQL database.
+
+Unchanged:
+- React
+- TypeScript
+- Vite
+- Tailwind CSS
+- shadcn/ui
+- TanStack Query
+- Recharts
+- Python
+- FastAPI
+- Pydantic
+- SQLAlchemy 2.x
+- Alembic
+- REST/JSON
+- Modular Monolith
+- Pytest
+
+Reason for this change:
+- PostgreSQL will be implemented and managed directly by the project to satisfy
+  the evaluator's recommendation and reduce dependence on Supabase's managed
+  database layer, while retaining Supabase Auth for authentication.

@@ -1,0 +1,1 @@
+"""Quotations Pydantic schemas."""

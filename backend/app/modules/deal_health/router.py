@@ -1,0 +1,1 @@
+"""Deal health endpoints router."""

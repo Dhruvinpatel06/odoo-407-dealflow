@@ -1,0 +1,1 @@
+"""ApprovalPolicy SQLAlchemy model."""

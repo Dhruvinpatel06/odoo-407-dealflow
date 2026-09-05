@@ -1,0 +1,1 @@
+"""QuotationLine SQLAlchemy model."""

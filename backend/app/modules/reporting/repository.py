@@ -1,0 +1,1 @@
+"""Reporting repository layer."""

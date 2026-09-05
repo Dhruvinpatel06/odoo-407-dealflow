@@ -1,0 +1,1 @@
+"""DealAlert SQLAlchemy model."""

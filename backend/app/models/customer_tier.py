@@ -1,0 +1,1 @@
+"""CustomerTier SQLAlchemy model."""

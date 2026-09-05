@@ -1,0 +1,1 @@
+"""DiscountRule SQLAlchemy model."""

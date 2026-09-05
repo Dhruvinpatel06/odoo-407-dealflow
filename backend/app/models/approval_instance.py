@@ -1,0 +1,1 @@
+"""ApprovalInstance SQLAlchemy model."""

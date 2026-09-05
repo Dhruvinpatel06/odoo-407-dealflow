@@ -1,0 +1,1090 @@
+DealFlow360 — Requirements & Scope Specification
+
+Document Purpose
+
+This document consolidates the functional requirements, non-functional/
+implementation requirements, scope boundaries, user roles, end-to-end
+workflow, acceptance/test flow, deliverables, priorities, and explicitly
+unspecified areas for the DealFlow360 hackathon project.
+
+This document is intended to be a source-of-truth requirements document
+for subsequent technical design work, including: - Database schema -
+Backend directory/module structure - API design - Frontend information
+architecture - Business-rule/service design - Test plan - Seed data -
+Demo flow
+
+Source Basis
+
+Primary source: DealFlow360 hackathon problem statement (13 pages).
+
+The requirements below preserve the terminology and intent of the
+problem statement. Where the problem statement does not specify an exact
+formula, algorithm, implementation, or technology, this document marks
+that area as “Implementation Decision / Not Specified” rather than
+inventing a mandatory rule.
+
+====================================================================== 1.
+PRODUCT VISION
+======================================================================
+
+DealFlow360 is an intelligent, self-governing B2B Sales Operations
+platform.
+
+The platform must go beyond a basic quote-to-invoice workflow and act as
+a deal engine that: - Enforces pricing/discount discipline. -
+Automatically routes deals for the required approvals. - Reacts to
+real-time inventory availability. - Supports multi-warehouse fulfillment
+and backorders. - Supports one-time products and recurring subscriptions
+in the same order. - Provides recurring billing schedules and
+proration. - Allows customers to negotiate live quotations through a
+restricted customer portal. - Monitors deal health and anomalies. -
+Provides sales dashboards and reporting. - Maintains an audit trail for
+important business decisions.
+
+The core business workflow is:
+
+Quotation -> Discount Governance / Risk Evaluation -> Approval (when
+required) -> Fulfillment / Warehouse Allocation -> Billing -> Customer
+Negotiation / Re-approval when required -> Reporting / Deal Monitoring
+
+======================================================================
+2. PRIMARY GOAL
+======================================================================
+
+Build a complete sales flow including: - Sales backend configuration -
+Sales representative workspace - Quotation creation and editing -
+Automatic discount approval routing - Upsell/cross-sell
+recommendations - Multi-warehouse fulfillment - Backorder handling -
+Hybrid one-time + recurring billing - Customer portal negotiation - Deal
+health/anomaly monitoring - Reporting - End-to-end quotation-to-cash
+behavior
+
+======================================================================
+3. USER ROLES AND RESPONSIBILITIES
+======================================================================
+
+3.1 Sales Representative
+
+The Sales Representative shall be able to: - Sign up / log in. - Open
+the sales workspace. - Create quotations. - Select customers. - Add
+products. - Adjust quantities. - Apply line-level and order-level
+discounts. - Review upsell/cross-sell suggestions. - Add suggested
+products to quotations. - Track quotation approval status. - Track
+fulfillment progress. - Respond to customer negotiation requests.
+
+3.2 Sales Manager / Approver
+
+The Sales Manager / Approver shall be able to: - Review quotations
+requiring approval. - Approve quotations. - Reject quotations. - Return
+quotations for revision. - Configure discount tiers. - Configure
+approval chains. - Monitor deal health and at-risk deals.
+
+3.3 Finance / Operations User
+
+The Finance / Operations User shall be able to: - Perform second-level
+approvals for high-risk discounts. - Manage warehouse fulfillment
+splits. - Handle backorder decisions. - Reconcile recurring billing. -
+Reconcile credit notes.
+
+3.4 Customer / Portal User
+
+The Customer shall be able to: - Access quotations through the customer
+portal. - View quotation details. - See quotation status. - Ask
+line-level questions. - Add line-level comments. - Request changes. -
+Counter a discount. - Submit negotiation requests. - Confirm final terms
+with one click.
+
+3.5 Admin
+
+The Admin shall be able to: - Configure products. - Configure product
+categories and variants. - Configure price lists. - Configure customer
+tiers. - Configure discount tiers. - Configure approval chains. -
+Configure warehouses. - Configure stock/replenishment settings. -
+Configure subscription plans. - Configure proration rules. - Configure
+cancellation/refund rules. - Configure optional upsell/cross-sell
+rules. - Access platform-wide analytics and reporting.
+
+======================================================================
+4. FUNCTIONAL REQUIREMENTS
+======================================================================
+
+FR-01 AUTHENTICATION AND ACCESS
+
+FR-01.1 Internal users can sign up using standard credentials.
+
+FR-01.2 Internal users can log in using standard credentials.
+
+FR-01.3 After authentication, internal users can access the backend
+configuration area and sales workspace according to their role.
+
+FR-01.4 Customers can access their quotations through a customer portal
+using either: - Magic link, or - Email and password.
+
+FR-01.5 The system shall enforce role-appropriate access.
+
+FR-01.6 Customer access shall be restricted to the customer-facing
+portal and relevant quotation information.
+
+FR-02 PRODUCT AND PRICE LIST MANAGEMENT
+
+FR-02.1 Admin can create/manage products.
+
+FR-02.2 Product general information shall support: - Name - Category -
+Price - Unit - Tax - Product description
+
+FR-02.3 Product variants shall support: - Attribute (e.g. Size, Pack) -
+Attribute values - Extra prices
+
+FR-02.4 Price lists shall support: - Customer-tier-based pricing -
+Currency-specific rules
+
+FR-03 DISCOUNT TIER CONFIGURATION
+
+FR-03.1 The system shall support configurable discount ceilings per
+customer tier.
+
+Example: - Bronze: up to 5% - Silver: up to 10% - Gold: up to 15%
+
+These values are examples and must be configurable.
+
+FR-03.2 The system shall support category-specific discount ceilings.
+
+FR-03.3 Different product categories may have different allowable
+discounts.
+
+FR-04 DISCOUNT RISK EVALUATION
+
+FR-04.1 The system shall evaluate each quotation line against the
+applicable discount limit.
+
+FR-04.2 The applicable limit shall consider customer tier and product
+category rules.
+
+FR-04.3 The system shall calculate a blended discount risk score for a
+quotation.
+
+FR-04.4 The blended score shall consider the overall pattern of discount
+violations across quotation lines, not only the single worst line.
+
+FR-04.5 A single line exceeding its applicable limit can cause the whole
+quotation to be flagged for approval.
+
+FR-04.6 Multiple smaller violations across different lines can combine
+into a higher blended risk.
+
+FR-04.7 The risk score shall determine whether manager approval is
+required and, when applicable, whether Finance approval is also
+required.
+
+IMPORTANT: The problem statement explains the behavior of the blended
+score but does NOT prescribe an exact mathematical formula. The exact
+scoring formula is an implementation decision and must be defined
+separately during system design.
+
+Example from the problem statement: - Gold customer overall ceiling:
+15% - Hardware ceiling: 15% - Service ceiling: 10% - Laptop discount:
+12% -> within limit - Setup Service discount: 18% -> 8 percentage points
+above its limit Result: quotation requires approval.
+
+FR-05 APPROVAL CHAIN CONFIGURATION
+
+FR-05.1 Admin/Manager can configure approval chains.
+
+FR-05.2 The system shall support a Sales Manager-only approval level.
+
+FR-05.3 The system shall support a Sales Manager followed by Finance
+approval level.
+
+FR-05.4 The highest required approval level shall be selected when a
+quotation contains mixed categories/risk levels.
+
+FR-05.5 Approval routing shall be automatic based on configured rules.
+
+FR-05.6 The Sales Representative should not have to manually request
+approval when configured thresholds are exceeded.
+
+FR-06 APPROVAL WORKFLOW
+
+FR-06.1 The approval screen shall display the blended risk score.
+
+FR-06.2 The approval screen shall display the required approval steps.
+
+FR-06.3 Finance shall only appear in the approval chain when required.
+
+FR-06.4 Each reviewer shall be able to: - Approve - Reject - Return for
+revision
+
+FR-06.5 Approval state transitions shall be recorded.
+
+FR-06.6 A confirmation screen shall show the audit-trail entry after
+reviewer action.
+
+FR-06.7 All approvals, rejections, and edits shall be logged with: -
+User - Timestamp - Reason
+
+FR-07 SALES WORKSPACE
+
+FR-07.1 The workspace shall provide a Quotations navigation item.
+
+FR-07.2 The workspace shall provide a Pipeline navigation item.
+
+FR-07.3 The workspace shall provide: - Reload Data - Go to Back-end -
+Close Workspace
+
+FR-07.4 Reload Data shall refresh relevant: - Pricing data - Stock
+data - Approval data
+
+FR-08 QUOTATION LIST AND PIPELINE
+
+FR-08.1 Quotations shall appear as selectable cards.
+
+FR-08.2 Quotation cards shall show at least: - Customer - Amount - Stage
+
+FR-08.3 Example stages include: - Draft - Pending Approval
+
+FR-08.4 Selecting a quotation shall open its quotation builder.
+
+FR-08.5 The system shall provide a Kanban-style deal pipeline view.
+
+FR-09 QUOTATION BUILDER
+
+FR-09.1 A Sales Representative can create a quotation for a customer.
+
+FR-09.2 The quotation builder shall support products across: -
+Hardware - Services - Subscriptions
+
+FR-09.3 Users can increase/decrease line quantities.
+
+FR-09.4 Users can apply line-level discounts.
+
+FR-09.5 Users can apply order-level discounts.
+
+FR-09.6 The quotation shall display order lines and price totals.
+
+FR-09.7 The quotation shall display a live margin indicator.
+
+FR-09.8 Adding/removing/changing products or discounts shall update
+relevant totals/margin information.
+
+FR-09.9 A quotation shall move to approval when approval is required.
+
+FR-09.10 A quotation may move directly toward fulfillment when approval
+is not required.
+
+FR-10 UPSELL AND CROSS-SELL
+
+FR-10.1 The quotation builder shall provide an upsell/cross-sell panel.
+
+FR-10.2 Suggestions shall be ranked using available recommendation
+signals including: - Historical co-purchase data - Active promotions
+
+FR-10.3 Suggestions shall respect configured minimum margin thresholds.
+
+FR-10.4 Each suggestion shall display: - Suggested product - Margin
+delta if added - Promotion tag, when applicable
+
+FR-10.5 User actions shall include: - Add to Quote - Dismiss
+
+FR-10.6 Adding a suggestion shall immediately update the quotation’s
+margin indicator and totals.
+
+NOTE: Backend Upsell/Cross-Sell Rule Setup is explicitly marked OPTIONAL
+in the problem statement. The feature itself is part of the main sales
+experience/key outcomes, while the backend rule-configuration section is
+optional.
+
+FR-11 WAREHOUSE AND FULFILLMENT SETUP
+
+FR-11.1 Admin can create and manage warehouses.
+
+FR-11.2 The system shall support multiple warehouses.
+
+FR-11.3 Stock levels shall be configurable per warehouse.
+
+FR-11.4 Replenishment rules shall be configurable per warehouse.
+
+FR-11.5 Shipping cost weighting shall be configurable for automatic
+warehouse split logic.
+
+FR-11.6 The weighting is intended to help minimize the number/cost of
+shipments.
+
+FR-12 AUTOMATIC WAREHOUSE SPLIT
+
+FR-12.1 After approval, or when approval is not required, the system
+shall calculate a recommended warehouse fulfillment split.
+
+FR-12.2 The recommendation shall use current/live stock availability.
+
+FR-12.3 The fulfillment screen shall display: - Warehouse name -
+Quantity fulfilled from each warehouse - Estimated shipment count -
+Estimated shipment cost
+
+FR-12.4 The user shall be able to: - Accept Suggested Split - Manual
+Override
+
+FR-12.5 Manual override shall allow the authorized operations user to
+change the suggested allocation.
+
+FR-13 BACKORDER HANDLING
+
+FR-13.1 The system shall support backorders when inventory is
+insufficient.
+
+FR-13.2 If stock arrives while fulfillment is in progress, the system
+shall automatically surface a “Consolidate Remaining Backorder” prompt.
+
+FR-13.3 The system shall support a decision to consolidate remaining
+backordered quantities.
+
+FR-14 SUBSCRIPTION / RECURRING PLAN CONFIGURATION
+
+FR-14.1 Admin can define recurring plans.
+
+FR-14.2 Supported plan examples: - Monthly - Quarterly - Yearly
+
+FR-14.3 Plans can be attached to specific products or services.
+
+FR-14.4 Admin can configure proration rules.
+
+FR-14.5 Admin can configure cancellation rules.
+
+FR-14.6 Admin can configure partial-refund rules.
+
+FR-15 HYBRID ORDER AND BILLING
+
+FR-15.1 A single order shall support both: - One-time product/service
+lines - Recurring subscription lines
+
+FR-15.2 The billing interface shall clearly distinguish one-time and
+recurring lines.
+
+FR-15.3 Recurring lines shall produce a billing schedule.
+
+FR-15.4 One-time lines shall be billed through the applicable one-time
+invoice flow.
+
+FR-15.5 Recurring lines shall be billed through the recurring billing
+schedule.
+
+FR-15.6 The same order must reconcile both billing types correctly.
+
+FR-16 SUBSCRIPTION PRORATION
+
+FR-16.1 The system shall support mid-cycle proration when subscription
+quantity changes.
+
+FR-16.2 The system shall support mid-cycle proration when a subscription
+plan changes.
+
+FR-16.3 The system shall calculate the applicable prorated amount based
+on configured rules.
+
+NOTE: The problem statement requires proration but does NOT specify the
+exact proration formula. The exact formula is an implementation
+decision.
+
+FR-17 SUBSCRIPTION CANCELLATION / MODIFICATION
+
+FR-17.1 Authorized users shall be able to cancel subscriptions.
+
+FR-17.2 Authorized users shall be able to modify subscriptions.
+
+FR-17.3 When applicable, cancellation/modification shall trigger: -
+Partial refund, or - Credit note
+
+FR-17.4 Refund/credit-note behavior shall follow configured rules.
+
+FR-18 CUSTOMER PORTAL
+
+FR-18.1 The customer portal shall be a real, separate, restricted
+customer-facing view.
+
+FR-18.2 It shall NOT simply be an internal screen with a different
+label.
+
+FR-18.3 The portal shall display quotation details.
+
+FR-18.4 The portal shall display quotation status.
+
+Supported/example statuses: - Sent - Under Negotiation - Confirmed
+
+FR-19 CUSTOMER NEGOTIATION
+
+FR-19.1 Customer can add line-level comments.
+
+FR-19.2 Customer can ask line-level questions.
+
+FR-19.3 Customer can request changes.
+
+FR-19.4 Customer can propose/counter a discount.
+
+FR-19.5 Customer can submit a negotiation request.
+
+FR-19.6 Customer can confirm the quotation with one click.
+
+FR-20 NEGOTIATION RE-APPROVAL
+
+FR-20.1 When customer negotiation changes quotation terms, the system
+shall recalculate the applicable discount/risk state.
+
+FR-20.2 If the final terms exceed approval thresholds, the quotation
+shall automatically re-enter the approval workflow.
+
+FR-20.3 Re-entered approval shall follow the same configured approval
+logic.
+
+FR-20.4 If final terms do not exceed approval thresholds, the confirmed
+order may proceed directly to fulfillment.
+
+FR-21 DEAL HEALTH AND ANOMALY MONITORING
+
+FR-21.1 The dashboard shall identify stalled deals.
+
+FR-21.2 A deal is considered stalled when a quotation has been inactive
+for more than a configured number of days.
+
+FR-21.3 The dashboard shall identify discount anomalies.
+
+FR-21.4 A discount anomaly is described as a discount well above the
+rep’s historical average.
+
+FR-21.5 The dashboard shall show delivery promise slippage indicators.
+
+FR-21.6 Clicking an alert shall open the related quotation directly.
+
+FR-21.7 An automated nudge or escalation action can be triggered from an
+alert.
+
+NOTE: The problem statement does not prescribe an exact
+anomaly-detection formula or delivery-slippage algorithm. Those are
+implementation decisions.
+
+FR-22 REPORTING
+
+FR-22.1 The system shall provide a dashboard/reporting menu for sales
+performance.
+
+FR-22.2 Reports shall cover quotations/orders and relevant sales
+performance information.
+
+FR-22.3 Reporting shall support date filtering: - Today - Week - Custom
+date range
+
+FR-22.4 Reporting shall support filtering by: - Sales Team - Sales
+Representative - Approval Status - Product - Category
+
+FR-22.5 Approval status filters shall support: - Pending - Approved -
+Rejected
+
+FR-22.6 Product/category reporting shall help track: - Best-selling
+items - Most-discounted items
+
+FR-22.7 Reports shall support export to: - PDF - XLS
+
+FR-23 ORDER CONFIRMATION, PAYMENT, AND INVOICE STATUS
+
+FR-23.1 Once a quotation is approved, or if approval is not required,
+the order shall be able to proceed toward fulfillment and billing.
+
+FR-23.2 The system shall support order confirmation.
+
+FR-23.3 The system shall support recording a payment.
+
+FR-23.4 Invoice status shall update correctly after the applicable
+billing/payment action.
+
+FR-23.5 The complete flow shall connect quotation, approval,
+fulfillment, billing, and payment states.
+
+FR-24 AUDIT TRAIL
+
+FR-24.1 The system shall maintain an audit trail for important quotation
+changes.
+
+FR-24.2 At minimum, the following events shall be logged: - Approval -
+Rejection - Edit
+
+FR-24.3 Each relevant audit record shall include: - User - Timestamp -
+Reason
+
+FR-24.4 Audit information shall be visible where the approval workflow
+requires confirmation/audit review.
+
+======================================================================
+5. END-TO-END BUSINESS WORKFLOW
+======================================================================
+
+The system shall support the following end-to-end flow:
+
+STEP 1 — Authentication - Sales Rep signs up for the first time or logs
+in.
+
+STEP 2 — Backend Setup - Admin configures: - Products - Price lists -
+Discount tiers - Approval chains - Warehouses - Subscription plans
+
+STEP 3 — Quotation Creation - Rep opens the workspace. - Rep creates a
+quotation for a customer.
+
+STEP 4 — Product / Discount Configuration - Rep adds products. - Rep
+adjusts quantities. - Rep applies discounts. - Rep reviews
+upsell/cross-sell suggestions.
+
+STEP 5 — Risk Evaluation - System evaluates discounts against
+customer-tier and category-specific limits. - System calculates blended
+discount risk.
+
+STEP 6 — Automatic Approval Routing - If threshold is exceeded: - Route
+to Sales Manager. - Route to Finance afterward if required. - If
+threshold is not exceeded: - Skip approval.
+
+STEP 7 — Fulfillment Planning - System checks stock. - System suggests
+warehouse split. - User accepts or overrides the split. - Backorders are
+handled if needed.
+
+STEP 8 — Hybrid Billing - One-time products generate applicable one-time
+billing. - Recurring products generate recurring billing schedules. -
+Proration applies to applicable mid-cycle changes.
+
+STEP 9 — Customer Negotiation - Customer receives quotation link. -
+Customer can negotiate through the portal. - Customer can request
+changes or counter a discount.
+
+STEP 10 — Negotiation Re-approval - If negotiated terms exceed
+thresholds: - Recalculate risk. - Automatically re-enter approval. -
+Otherwise continue toward confirmation.
+
+STEP 11 — Confirmation / Fulfillment / Billing - Customer confirms final
+quotation. - Order proceeds to fulfillment and billing.
+
+STEP 12 — Payment - Payment is recorded. - Invoice status updates.
+
+STEP 13 — Monitoring / Reporting - Manager monitors deal health. -
+Reports are filtered and reviewed.
+
+======================================================================
+6. NON-FUNCTIONAL AND IMPLEMENTATION REQUIREMENTS
+======================================================================
+
+NFR-01 TECHNOLOGY AGNOSTICITY
+
+The original problem statement permits any: - Backend language -
+Frontend framework - Relational database - Document database
+
+The focus is on business logic, data model, and end-to-end workflow.
+
+For this project, the separately confirmed technology-stack document is
+the implementation reference for the chosen stack.
+
+NFR-02 BUSINESS RULES MUST BE REAL
+
+Core business rules must be implemented in application logic and must
+not be hardcoded or faked solely for the demo.
+
+This explicitly applies to: - Approval routing - Discount governance -
+Warehouse splitting - Billing proration
+
+NFR-03 BACKEND-AUTHORITATIVE BUSINESS LOGIC
+
+Business decisions must be enforced by the backend/application layer,
+not only by frontend UI behavior.
+
+NFR-04 ROLE-BASED ACCESS
+
+The system shall enforce role-based access for internal roles and
+customer portal access.
+
+NFR-05 CUSTOMER PORTAL SEPARATION
+
+The customer negotiation interface must be a real separate and
+restricted customer-facing view.
+
+NFR-06 REAL-TIME / IMMEDIATE BEHAVIOR
+
+The system should provide live/immediate updates where explicitly
+required, including: - Margin impact after adding recommendations. -
+Pricing/stock/approval data refresh. - Approval status. - Deal
+health/anomaly state. - Fulfillment status. - Customer negotiation
+changes.
+
+The exact realtime implementation is a technical design decision.
+
+NFR-07 AUDITABILITY
+
+Important business actions must be traceable through user, timestamp,
+and reason information.
+
+NFR-08 CONFIGURABILITY
+
+Business rules described as configurable in the problem statement must
+be data/configuration-driven rather than permanently hardcoded.
+
+Examples: - Discount ceilings - Category discount ceilings - Approval
+chains - Warehouse stock - Replenishment rules - Shipping-cost
+weighting - Subscription plans - Proration rules - Cancellation/refund
+rules - Stalled-deal threshold
+
+NFR-09 DATA CONSISTENCY
+
+Changes to quotations must remain consistent across: - Pricing -
+Margin - Risk - Approval - Fulfillment - Billing - Customer negotiation
+
+NFR-10 END-TO-END CORRECTNESS
+
+Each step of the core flow must produce a visible, correct result before
+the next step proceeds.
+
+NFR-11 PRODUCTION-LIKE SYSTEM THINKING
+
+The solution should demonstrate: - Role-based access - Approval chains -
+Inventory coordination - Recurring billing - Audit trails - Deal
+analytics - Portal collaboration
+
+======================================================================
+7. ACCEPTANCE / QUICK TEST FLOW
+======================================================================
+
+The following eight-step walkthrough is the primary practical acceptance
+test described by the problem statement.
+
+AT-01 Authentication and Setup - Sign up or log in. - Set up a discount
+tier. - Set up a warehouse. - Set up a subscription plan.
+
+Expected result: Basic backend configuration is available and usable.
+
+AT-02 Discount Violation - Create a quotation. - Add a product. - Apply
+a discount higher than normally allowed.
+
+Expected result: The system detects the applicable discount
+violation/risk.
+
+AT-03 Automatic Approval - Confirm the quotation.
+
+Expected result: The quotation automatically requests manager approval
+without the Sales Rep manually requesting it.
+
+AT-04 Upsell / Margin Update - While building the quotation, accept one
+upsell suggestion.
+
+Expected result: Quotation total and margin update
+immediately/correctly.
+
+AT-05 Fulfillment Split - Approve the quotation. - Check warehouse
+allocation. - Use two warehouses if required by stock availability.
+
+Expected result: Stock is pulled from the appropriate warehouse(s) and
+the split is correct.
+
+AT-06 Hybrid Billing - Include one one-time product. - Include one
+recurring subscription on the same order.
+
+Expected result: One-time and recurring billing are handled correctly
+and separately, with the recurring billing schedule visible.
+
+AT-07 Customer Negotiation / Re-approval - Open the customer portal. -
+As the customer, request a larger discount.
+
+Expected result: If the changed terms exceed the applicable threshold,
+the quotation automatically returns to approval.
+
+AT-08 Payment / Invoice - Confirm the order. - Record a payment.
+
+Expected result: Invoice status updates correctly.
+
+Acceptance Principle: If all eight steps work smoothly and each result
+matches expectations, the core flow is considered solid.
+
+======================================================================
+8. DEMO REQUIREMENTS
+======================================================================
+
+DEMO-01
+
+The working application must support a five-minute live demo.
+
+DEMO-02
+
+The live demo must cover at least two complete end-to-end flows.
+
+DEMO-03
+
+Flows should demonstrate meaningful business logic, not only UI
+navigation.
+
+Recommended core demo evidence: - Automatic discount approval routing -
+Blended risk calculation - Upsell margin impact - Multi-warehouse
+split - Hybrid billing - Customer negotiation - Automatic re-approval -
+Payment/invoice status
+
+======================================================================
+9. REQUIRED DELIVERABLES
+======================================================================
+
+DEL-01 Working Application
+
+Provide a working: - Backend - Frontend - Sample seed data
+
+DEL-02 Five-Minute Live Demo
+
+Demonstrate at least two complete end-to-end flows from quotation to
+fulfillment or billing.
+
+DEL-03 One-Page Architecture Diagram
+
+Show: - Data model - Major modules - Connections between modules
+
+DEL-04 Future Roadmap Note
+
+Provide a short note describing what the team would build next with
+additional time.
+
+======================================================================
+10. SCOPE PRIORITY
+======================================================================
+
+This section organizes the problem statement into practical
+implementation priority. It does not change the original requirements.
+
+P0 — CORE / MUST WORK
+
+The following should be treated as the highest-priority implementation
+scope for the hackathon:
+
+-   Authentication
+-   Role-based access
+-   Customer portal separation
+-   Product management
+-   Customer tiers
+-   Discount ceilings
+-   Category-specific discount rules
+-   Blended discount risk evaluation
+-   Automatic approval routing
+-   Sales Manager approval
+-   Finance second-level approval when required
+-   Approval/rejection/revision actions
+-   Audit trail
+-   Quotation creation
+-   Quantity management
+-   Line-level and order-level discounts
+-   Live totals/margin
+-   Warehouse configuration
+-   Stock availability
+-   Automatic warehouse split
+-   Manual fulfillment override
+-   Backorder handling
+-   One-time + recurring lines in one order
+-   Billing schedule
+-   Customer quotation portal
+-   Customer negotiation
+-   Automatic re-approval after negotiation
+-   Order confirmation
+-   Payment recording
+-   Invoice status update
+-   Basic deal-health monitoring
+-   Required reporting filters
+-   Working end-to-end flow
+
+P1 — IMPORTANT
+
+These should be implemented if time permits after P0 is stable:
+
+-   Product variants
+-   Customer-tier price lists
+-   Currency-specific price-list rules
+-   Detailed subscription modification
+-   Subscription cancellation
+-   Proration
+-   Partial refund / credit note
+-   Delivery promise slippage indicators
+-   Discount anomaly detection
+-   Automated nudge/escalation
+-   PDF export
+-   XLS export
+-   Kanban pipeline
+-   Richer dashboard analytics
+-   More sophisticated recommendation ranking
+
+P2 — OPTIONAL / STRETCH
+
+-   Backend upsell/cross-sell rule configuration
+-   Advanced historical co-purchase recommendation logic
+-   Advanced promotion ranking
+-   Advanced margin optimization
+
+BONUS — EXPLICITLY BONUS
+
+-   Multi-currency support beyond the required currency-specific price
+    list behavior
+-   Multi-company support
+
+The original problem statement explicitly identifies multi-currency and
+multi-company support as bonus rather than required features.
+
+======================================================================
+11. SCOPE BOUNDARIES / OUT OF SCOPE
+======================================================================
+
+The problem statement does NOT require a particular: - Programming
+language - Frontend framework - Database - Cloud provider - API style -
+Exact database schema - Exact risk-score formula - Exact warehouse
+optimization algorithm - Exact anomaly-detection formula - Exact
+delivery-slippage algorithm - Exact proration formula
+
+Therefore these are design/implementation decisions rather than
+requirements from the problem statement.
+
+The initial hackathon scope should avoid expanding into unrelated
+enterprise functionality that is not required by the problem statement.
+
+Any additional feature should be considered only after the core
+quotation-to-cash workflow is stable.
+
+======================================================================
+12. BUSINESS RULES THAT MUST REMAIN CONFIGURABLE
+======================================================================
+
+The following are business-policy inputs and should be represented as
+configuration/data:
+
+-   Customer tiers
+-   Discount ceilings per customer tier
+-   Discount ceilings per product category
+-   Approval threshold/range definitions
+-   Approval chain ordering
+-   Warehouse stock levels
+-   Warehouse replenishment rules
+-   Shipping cost weighting
+-   Subscription plan periods
+-   Subscription proration rules
+-   Subscription cancellation rules
+-   Partial refund rules
+-   Stalled-deal inactivity threshold
+-   Minimum margin threshold for recommendations
+-   Promotion state/ranking inputs
+
+These should be designed so that future database/API work can represent
+them as entities/configuration rather than scattered hardcoded
+constants.
+
+======================================================================
+13. CORE DOMAIN AREAS FOR FUTURE TECHNICAL DESIGN
+======================================================================
+
+The requirements imply the following major domain areas. These are
+logical areas, not a finalized database schema:
+
+1.  Authentication & Authorization
+2.  Users / Roles
+3.  Customers
+4.  Customer Tiers
+5.  Products
+6.  Categories
+7.  Product Variants
+8.  Price Lists / Pricing Rules
+9.  Discount Rules
+10. Approval Chains
+11. Approval Instances / Steps
+12. Audit Logs
+13. Quotations
+14. Quotation Lines
+15. Recommendations / Upsell / Cross-sell
+16. Warehouses
+17. Inventory / Stock
+18. Fulfillment Allocations
+19. Backorders
+20. Orders
+21. Subscription Plans
+22. Subscriptions
+23. Billing Schedules
+24. Billing / Invoices
+25. Payments
+26. Refunds / Credit Notes
+27. Customer Negotiation / Requests
+28. Deal Health
+29. Anomaly Alerts
+30. Reporting
+
+The actual schema and relationships must be designed from the complete
+requirements rather than assuming this list is a final schema.
+
+======================================================================
+14. IMPORTANT STATE / WORKFLOW CONCEPTS
+======================================================================
+
+The technical design should account for state transitions across the
+following lifecycle areas.
+
+Quotation: - Draft - Sent - Under Negotiation - Pending Approval -
+Approved - Rejected - Returned for Revision - Confirmed
+
+Approval: - Not Required - Pending Manager - Pending Finance -
+Approved - Rejected - Revision Required
+
+Fulfillment: - Pending - Suggested - Accepted - Manually Overridden -
+Partially Fulfilled - Backordered - Consolidation Available - Fulfilled
+
+Billing: - One-Time Billing - Recurring Billing - Scheduled - Partially
+Paid / Paid as applicable - Invoice status states as needed by
+implementation
+
+NOTE: The problem statement explicitly gives some statuses as examples,
+but does not define a complete formal state machine. Exact state enums
+and transition rules should be finalized during technical design.
+
+======================================================================
+15. CRITICAL DESIGN PRINCIPLES
+======================================================================
+
+PRINCIPLE-01
+
+The backend/application layer must be authoritative for business rules.
+
+PRINCIPLE-02
+
+Frontend validation may improve UX, but must not be the only enforcement
+of discount, approval, fulfillment, or billing rules.
+
+PRINCIPLE-03
+
+Every important quotation change must be reflected consistently in risk,
+approval, margin, fulfillment, and billing behavior where applicable.
+
+PRINCIPLE-04
+
+Customer negotiation is part of the actual sales workflow, not a
+separate mock/demo page.
+
+PRINCIPLE-05
+
+Approval routing must be automatic.
+
+PRINCIPLE-06
+
+Warehouse splitting must be calculated from inventory/business rules,
+not simply displayed as static sample values.
+
+PRINCIPLE-07
+
+Hybrid billing must represent both one-time and recurring commercial
+lines in the same order while maintaining correct billing behavior.
+
+PRINCIPLE-08
+
+The system should be demonstrable through real end-to-end workflows
+using seed data.
+
+PRINCIPLE-09
+
+Configuration should drive business rules wherever the problem statement
+describes configurable policy.
+
+======================================================================
+16. CONFIRMED IMPLEMENTATION REFERENCE
+======================================================================
+
+A separate project source document defines the confirmed technology
+stack. That document should be treated as the implementation technology
+reference when producing database, backend, frontend, API, and
+deployment designs.
+
+Confirmed stack summary: - Frontend: React + TypeScript + Vite +
+Tailwind CSS + shadcn/ui - Client/server state: TanStack Query - Charts:
+Recharts - Backend: Python + FastAPI + Pydantic + SQLAlchemy + Alembic -
+Database: Supabase PostgreSQL - Authentication: Supabase Auth -
+Realtime: Supabase Realtime - API: REST / JSON - Testing: Pytest -
+Architecture: Modular Monolith - Deployment: Vercel + Python application
+hosting + Supabase
+
+The technology stack is an implementation choice for this project; the
+original hackathon problem statement itself is technology-agnostic.
+
+======================================================================
+17. REQUIREMENT TRACEABILITY SUMMARY
+======================================================================
+
+Requirement Area Priority
+
+Authentication P0 Role-based access P0 Product management P0 Price lists
+P0/P1 Discount tiers P0 Category discount limits P0 Blended risk score
+P0 Approval routing P0 Manager approval P0 Finance approval P0 Audit
+trail P0 Quotation builder P0 Pipeline/Kanban P1 Upsell/cross-sell P0/P1
+Warehouse configuration P0 Automatic warehouse split P0 Manual override
+P0 Backorders P0 Subscription plans P0 Hybrid billing P0 Proration P1
+Cancellation/refund/credit note P1 Customer portal P0 Customer
+negotiation P0 Automatic re-approval P0 Deal health P0/P1 Anomaly
+detection P1 Delivery slippage P1 Reporting filters P0 PDF/XLS export P1
+Payment P0 Invoice status P0 Multi-currency BONUS Multi-company BONUS
+
+======================================================================
+18. FINAL DEFINITION OF DONE
+======================================================================
+
+DealFlow360 should be considered hackathon-ready when:
+
+1.  Internal users can authenticate.
+2.  Roles restrict access appropriately.
+3.  Admin can configure the required backend data.
+4.  A Sales Rep can create a quotation.
+5.  Products and discounts can be added.
+6.  Discount rules are evaluated by customer tier and category.
+7.  The blended risk score is calculated by actual application logic.
+8.  Approval is automatically routed to the correct level.
+9.  Approval actions and changes are auditable.
+10. Upsell/cross-sell can affect the quote and margin where implemented.
+11. Approved orders receive a real warehouse allocation recommendation.
+12. Manual warehouse override works.
+13. Backorders can be represented and consolidated when stock arrives.
+14. One order can contain one-time and recurring lines.
+15. Recurring billing schedules are generated.
+16. Required proration behavior works where implemented.
+17. Customer can access a separate restricted portal.
+18. Customer can negotiate quotation terms.
+19. Negotiation can automatically trigger re-approval.
+20. Confirmed orders proceed to fulfillment/billing.
+21. Payment can be recorded.
+22. Invoice status updates correctly.
+23. Deal health information is visible.
+24. Required reports can be filtered.
+25. Sample seed data supports at least two complete demo flows.
+26. The architecture diagram and future-roadmap deliverables are ready.
+27. The eight-step Quick Test Flow produces visible and correct results.
+
+======================================================================
+19. FUTURE TECHNICAL DESIGN INPUT
+======================================================================
+
+When using this document to create subsequent project artifacts:
+
+DATABASE SCHEMA: - Derive entities, relationships, constraints, indexes,
+and state fields from the requirements above. - Do not add entities
+solely because they are common in generic CRM/ERP systems unless
+required by this document.
+
+BACKEND DIRECTORY STRUCTURE: - Organize around the domain/business
+modules. - Keep business rules in backend services/domain logic. - Keep
+API routes/controllers separate from business logic. - Make critical
+business logic independently testable.
+
+API DESIGN: - Provide endpoints for the workflows described here. -
+Enforce authorization at the backend. - Do not expose direct data
+operations that bypass business rules.
+
+FRONTEND STRUCTURE: - Reflect the Sales Backend, Sales Workspace,
+Approval, Fulfillment, Billing, Customer Portal, Deal Health, and
+Reporting areas. - Keep the customer portal restricted and separate from
+internal views.
+
+TESTING: - Prioritize discount governance, blended risk calculation,
+approval routing/state transitions, warehouse splitting, backorders,
+subscription proration, billing, and negotiation re-approval.
+
+SEED DATA: - Seed data must support the Quick Test Flow and at least two
+complete live-demo scenarios.
+
+ARCHITECTURE: - Preserve the modular-monolith approach from the
+confirmed technology stack unless a later project decision explicitly
+changes it.
+
+======================================================================
+END OF REQUIREMENTS & SCOPE SPECIFICATION
+======================================================================

@@ -1,0 +1,1 @@
+"""NegotiationRequest SQLAlchemy model."""

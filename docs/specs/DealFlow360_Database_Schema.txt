@@ -1,0 +1,1686 @@
+DealFlow360 — FINAL DATABASE SCHEMA SPECIFICATION
+=======================================================
+
+DOCUMENT STATUS
+---------------
+Status: FINALIZED
+Purpose: Source-of-truth database schema specification for DealFlow360.
+Primary use: Future AI-assisted technical design and implementation, including
+SQLAlchemy models, Alembic migrations, API design, backend services, seed data,
+tests, and architecture documentation.
+
+SOURCE CONTEXT
+--------------
+This schema is derived from the finalized DealFlow360 Requirements & Scope
+Specification and the confirmed DealFlow360 Technology Stack.
+
+Confirmed database/infrastructure:
+- Database: Supabase PostgreSQL
+- ORM: SQLAlchemy 2.x
+- Migrations: Alembic
+- Backend: Python + FastAPI
+- Authentication: Supabase Auth
+- Architecture: Modular Monolith
+
+The backend is authoritative for business rules. Frontend validation is only
+for UX and must not be the sole enforcement mechanism.
+
+SCHEMA OBJECTIVE
+----------------
+The schema must support the complete DealFlow360 quotation-to-cash workflow:
+
+Authentication
+-> Customer/Product/Pricing Configuration
+-> Quotation Creation
+-> Discount Evaluation
+-> Blended Risk Evaluation
+-> Automatic Approval Routing
+-> Fulfillment/Warehouse Allocation
+-> Backorder Handling
+-> Hybrid Billing
+-> Customer Negotiation
+-> Negotiation Re-approval
+-> Order Confirmation
+-> Payment
+-> Invoice Status
+-> Deal Health/Alerts
+-> Reporting
+-> Audit Trail
+
+FINAL TABLE COUNT
+-----------------
+TOTAL TABLES: 29
+
+FINAL TABLE LIST
+----------------
+01. users
+02. customers
+03. customer_tiers
+04. product_categories
+05. products
+06. product_variants
+07. price_lists
+08. price_list_items
+09. discount_rules
+10. approval_policies
+11. approval_instances
+12. approval_steps
+13. quotations
+14. quotation_lines
+15. orders
+16. recommendation_rules
+17. warehouses
+18. inventory
+19. fulfillment_allocations
+20. backorders
+21. subscription_plans
+22. subscriptions
+23. billing_schedules
+24. invoices
+25. payments
+26. negotiation_requests
+27. negotiation_comments
+28. deal_alerts
+29. audit_logs
+
+GLOBAL DATABASE CONVENTIONS
+---------------------------
+1. Primary keys:
+   - Use UUID primary keys for all application tables.
+
+2. Timestamps:
+   - Use TIMESTAMP WITH TIME ZONE for created_at/updated_at and other
+     event timestamps.
+
+3. Money:
+   - Use NUMERIC(12,2).
+   - Do not use floating-point types for monetary values.
+
+4. Percentages:
+   - Use NUMERIC(5,2) unless a larger range is explicitly required.
+
+5. Quantities:
+   - Use NUMERIC(12,2).
+
+6. Boolean fields:
+   - Use BOOLEAN.
+
+7. Status/type values:
+   - Prefer PostgreSQL enums for stable finite states such as roles,
+     quotation status, approval status, invoice status, etc.
+
+8. JSONB:
+   - Use JSONB only where the data is intentionally flexible and a
+     dedicated relational table would add unnecessary complexity for the
+     hackathon. Current approved use: negotiation requested changes and
+     audit value snapshots.
+
+9. All tables should normally contain:
+   - id
+   - created_at
+   - updated_at
+   unless a table's lifecycle makes one of these unnecessary.
+
+10. Business calculations must be performed by the FastAPI backend.
+
+======================================================================
+TABLE DEFINITIONS
+======================================================================
+
+TABLE 01: users
+----------------
+Purpose:
+Application-level user identity and authorization metadata. Supabase Auth
+owns authentication credentials; this table owns application-specific user
+information and role.
+
+Fields:
+- id: UUID PK
+  Purpose: Internal user identifier.
+- auth_user_id: UUID UNIQUE NOT NULL
+  Purpose: Identifier of the corresponding Supabase Auth user.
+- name: VARCHAR NOT NULL
+  Purpose: User display/full name.
+- email: VARCHAR UNIQUE NOT NULL
+  Purpose: User email address.
+- role: ENUM NOT NULL
+  Values: SALES_REP, SALES_MANAGER, FINANCE_OPERATIONS, ADMIN, CUSTOMER.
+  Purpose: Application authorization role.
+- customer_id: UUID FK -> customers.id NULL
+  Purpose: Links a customer portal user to the customer/account they belong to.
+- is_active: BOOLEAN NOT NULL DEFAULT TRUE
+  Purpose: Controls whether the user can access the application.
+- created_at: TIMESTAMPTZ NOT NULL
+  Purpose: Creation timestamp.
+- updated_at: TIMESTAMPTZ NOT NULL
+  Purpose: Last modification timestamp.
+
+Constraints:
+- auth_user_id UNIQUE
+- email UNIQUE
+- customer_id is applicable to CUSTOMER users.
+
+TABLE 02: customers
+--------------------
+Purpose:
+Represents a B2B customer/account.
+
+Fields:
+- id: UUID PK
+  Purpose: Customer identifier.
+- name: VARCHAR NOT NULL
+  Purpose: Customer/company name.
+- email: VARCHAR NULL
+  Purpose: Primary customer contact email.
+- phone: VARCHAR NULL
+  Purpose: Primary customer contact phone.
+- customer_tier_id: UUID FK -> customer_tiers.id NOT NULL
+  Purpose: Customer's pricing/discount tier.
+- billing_address: TEXT NULL
+  Purpose: Billing address.
+- shipping_address: TEXT NULL
+  Purpose: Default shipping address.
+- is_active: BOOLEAN NOT NULL DEFAULT TRUE
+  Purpose: Whether the customer is active.
+- created_at: TIMESTAMPTZ NOT NULL
+- updated_at: TIMESTAMPTZ NOT NULL
+
+TABLE 03: customer_tiers
+-------------------------
+Purpose:
+Configurable customer tiers used for pricing and discount governance.
+
+Fields:
+- id: UUID PK
+  Purpose: Tier identifier.
+- name: VARCHAR UNIQUE NOT NULL
+  Purpose: Tier name, e.g. Bronze, Silver, Gold.
+- description: TEXT NULL
+  Purpose: Tier description.
+- default_discount_limit: NUMERIC(5,2) NOT NULL
+  Purpose: Default maximum discount percentage for the tier.
+- is_active: BOOLEAN NOT NULL DEFAULT TRUE
+  Purpose: Whether the tier can be used.
+- created_at: TIMESTAMPTZ NOT NULL
+- updated_at: TIMESTAMPTZ NOT NULL
+
+TABLE 04: product_categories
+----------------------------
+Purpose:
+Product/service categories used for catalog organization and category-level
+discount governance.
+
+Fields:
+- id: UUID PK
+  Purpose: Category identifier.
+- name: VARCHAR UNIQUE NOT NULL
+  Purpose: Category name, e.g. Hardware, Services, Subscriptions.
+- description: TEXT NULL
+  Purpose: Category description.
+- is_active: BOOLEAN NOT NULL DEFAULT TRUE
+  Purpose: Whether category is active.
+- created_at: TIMESTAMPTZ NOT NULL
+- updated_at: TIMESTAMPTZ NOT NULL
+
+TABLE 05: products
+------------------
+Purpose:
+Main product/service catalog and source of base pricing/cost/margin data.
+
+Fields:
+- id: UUID PK
+  Purpose: Product identifier.
+- category_id: UUID FK -> product_categories.id NOT NULL
+  Purpose: Product category.
+- name: VARCHAR NOT NULL
+  Purpose: Product/service name.
+- description: TEXT NULL
+  Purpose: Product description.
+- sku: VARCHAR UNIQUE NOT NULL
+  Purpose: Product stock keeping identifier.
+- unit: VARCHAR NOT NULL
+  Purpose: Unit of measurement.
+- base_price: NUMERIC(12,2) NOT NULL
+  Purpose: Default product selling price.
+- cost_price: NUMERIC(12,2) NOT NULL
+  Purpose: Product/service cost used for margin calculations.
+- tax_rate: NUMERIC(5,2) NOT NULL
+  Purpose: Default tax percentage.
+- is_subscription: BOOLEAN NOT NULL DEFAULT FALSE
+  Purpose: Indicates whether the product can be used as a recurring product.
+- is_active: BOOLEAN NOT NULL DEFAULT TRUE
+  Purpose: Whether product is available.
+- created_at: TIMESTAMPTZ NOT NULL
+- updated_at: TIMESTAMPTZ NOT NULL
+
+TABLE 06: product_variants
+--------------------------
+Purpose:
+Represents simple product variants such as Size=Large or Pack=10.
+
+Fields:
+- id: UUID PK
+  Purpose: Variant identifier.
+- product_id: UUID FK -> products.id NOT NULL
+  Purpose: Parent product.
+- attribute_name: VARCHAR NOT NULL
+  Purpose: Variant attribute name, e.g. Size.
+- attribute_value: VARCHAR NOT NULL
+  Purpose: Variant attribute value, e.g. Large.
+- extra_price: NUMERIC(12,2) NOT NULL DEFAULT 0
+  Purpose: Price added to parent product base price.
+- sku: VARCHAR NULL
+  Purpose: Optional variant-specific SKU.
+- is_active: BOOLEAN NOT NULL DEFAULT TRUE
+  Purpose: Whether variant is available.
+- created_at: TIMESTAMPTZ NOT NULL
+- updated_at: TIMESTAMPTZ NOT NULL
+
+TABLE 07: price_lists
+---------------------
+Purpose:
+Defines customer-tier/currency-specific pricing collections.
+
+Fields:
+- id: UUID PK
+  Purpose: Price list identifier.
+- name: VARCHAR NOT NULL
+  Purpose: Price list name.
+- customer_tier_id: UUID FK -> customer_tiers.id NULL
+  Purpose: Optional customer tier associated with the price list.
+- currency: VARCHAR(3) NOT NULL
+  Purpose: ISO-style currency code.
+- is_active: BOOLEAN NOT NULL DEFAULT TRUE
+  Purpose: Whether price list is active.
+- created_at: TIMESTAMPTZ NOT NULL
+- updated_at: TIMESTAMPTZ NOT NULL
+
+TABLE 08: price_list_items
+--------------------------
+Purpose:
+Stores individual product/variant prices within a price list.
+
+Fields:
+- id: UUID PK
+  Purpose: Price list item identifier.
+- price_list_id: UUID FK -> price_lists.id NOT NULL
+  Purpose: Parent price list.
+- product_id: UUID FK -> products.id NOT NULL
+  Purpose: Product being priced.
+- variant_id: UUID FK -> product_variants.id NULL
+  Purpose: Optional variant being priced.
+- price: NUMERIC(12,2) NOT NULL
+  Purpose: Selling price for this price list item.
+- created_at: TIMESTAMPTZ NOT NULL
+- updated_at: TIMESTAMPTZ NOT NULL
+
+TABLE 09: discount_rules
+------------------------
+Purpose:
+Stores configurable discount ceilings based on customer tier and/or
+product category.
+
+Fields:
+- id: UUID PK
+  Purpose: Discount rule identifier.
+- customer_tier_id: UUID FK -> customer_tiers.id NULL
+  Purpose: Optional tier condition.
+- category_id: UUID FK -> product_categories.id NULL
+  Purpose: Optional category condition.
+- max_discount_percent: NUMERIC(5,2) NOT NULL
+  Purpose: Maximum permitted discount percentage for the rule.
+- priority: INTEGER NOT NULL DEFAULT 0
+  Purpose: Rule precedence when multiple rules are applicable.
+- is_active: BOOLEAN NOT NULL DEFAULT TRUE
+  Purpose: Whether rule participates in evaluation.
+- created_at: TIMESTAMPTZ NOT NULL
+- updated_at: TIMESTAMPTZ NOT NULL
+
+Rule interpretation:
+- Rules may apply by customer tier, category, or both.
+- The discount engine determines the applicable limit.
+- For the core tier + category behavior, the stricter applicable limit
+  should win.
+- The exact rule precedence algorithm is a backend implementation decision,
+  but it must support customer-tier and category-specific ceilings.
+
+TABLE 10: approval_policies
+---------------------------
+Purpose:
+Defines configurable risk-score ranges and the approval levels required
+for those ranges.
+
+Fields:
+- id: UUID PK
+  Purpose: Approval policy identifier.
+- name: VARCHAR NOT NULL
+  Purpose: Human-readable policy name.
+- min_risk_score: NUMERIC(8,2) NOT NULL
+  Purpose: Minimum risk score covered by policy.
+- max_risk_score: NUMERIC(8,2) NULL
+  Purpose: Maximum risk score covered by policy; NULL may represent no upper
+  bound.
+- requires_manager: BOOLEAN NOT NULL DEFAULT FALSE
+  Purpose: Indicates whether Sales Manager approval is required.
+- requires_finance: BOOLEAN NOT NULL DEFAULT FALSE
+  Purpose: Indicates whether Finance/Operations approval is required.
+- priority: INTEGER NOT NULL DEFAULT 0
+  Purpose: Policy evaluation precedence.
+- is_active: BOOLEAN NOT NULL DEFAULT TRUE
+  Purpose: Whether policy is active.
+- created_at: TIMESTAMPTZ NOT NULL
+- updated_at: TIMESTAMPTZ NOT NULL
+
+Important:
+Approval policy is configuration. Approval execution is represented by
+approval_instances and approval_steps.
+
+TABLE 11: approval_instances
+----------------------------
+Purpose:
+Represents one actual approval workflow execution for a quotation.
+
+Fields:
+- id: UUID PK
+  Purpose: Approval execution identifier.
+- quotation_id: UUID FK -> quotations.id NOT NULL
+  Purpose: Quotation being approved.
+- risk_score: NUMERIC(8,2) NOT NULL
+  Purpose: Risk score captured when this approval workflow was created.
+- status: ENUM NOT NULL
+  Values: PENDING, APPROVED, REJECTED, REVISION_REQUIRED.
+  Purpose: Overall approval execution state.
+- started_at: TIMESTAMPTZ NOT NULL
+  Purpose: Approval workflow start time.
+- completed_at: TIMESTAMPTZ NULL
+  Purpose: Approval workflow completion time.
+- created_at: TIMESTAMPTZ NOT NULL
+  Purpose: Record creation time.
+- updated_at: TIMESTAMPTZ NOT NULL
+  Purpose: Last update.
+
+Important:
+A quotation may have multiple approval_instances over its lifecycle because
+customer negotiation can cause re-approval.
+
+TABLE 12: approval_steps
+------------------------
+Purpose:
+Represents each reviewer action within an approval instance.
+
+Fields:
+- id: UUID PK
+  Purpose: Approval step identifier.
+- approval_instance_id: UUID FK -> approval_instances.id NOT NULL
+  Purpose: Parent approval workflow.
+- step_order: INTEGER NOT NULL
+  Purpose: Sequence order; e.g. 1=Manager, 2=Finance.
+- approver_role: ENUM NOT NULL
+  Values: SALES_MANAGER, FINANCE_OPERATIONS.
+  Purpose: Required reviewer role.
+- approver_user_id: UUID FK -> users.id NULL
+  Purpose: Specific reviewer assigned to the step, if assigned.
+- status: ENUM NOT NULL
+  Values: PENDING, APPROVED, REJECTED, REVISION_REQUIRED.
+  Purpose: Step state.
+- decision_reason: TEXT NULL
+  Purpose: Reason supplied by reviewer.
+- decided_at: TIMESTAMPTZ NULL
+  Purpose: Decision timestamp.
+- created_at: TIMESTAMPTZ NOT NULL
+  Purpose: Creation time.
+- updated_at: TIMESTAMPTZ NOT NULL
+  Purpose: Last update.
+
+TABLE 13: quotations
+--------------------
+Purpose:
+Central commercial document and core sales aggregate.
+
+Fields:
+- id: UUID PK
+  Purpose: Quotation identifier.
+- quotation_number: VARCHAR UNIQUE NOT NULL
+  Purpose: Human-readable quotation number.
+- customer_id: UUID FK -> customers.id NOT NULL
+  Purpose: Customer receiving the quotation.
+- sales_rep_id: UUID FK -> users.id NOT NULL
+  Purpose: Responsible Sales Representative.
+- status: ENUM NOT NULL
+  Values:
+    DRAFT
+    SENT
+    UNDER_NEGOTIATION
+    PENDING_APPROVAL
+    APPROVED
+    REJECTED
+    REVISION_REQUIRED
+    CONFIRMED
+  Purpose: Current quotation lifecycle state.
+- subtotal: NUMERIC(12,2) NOT NULL DEFAULT 0
+  Purpose: Total before discounts and tax.
+- discount_amount: NUMERIC(12,2) NOT NULL DEFAULT 0
+  Purpose: Total discount amount.
+- order_discount_percent: NUMERIC(5,2) NOT NULL DEFAULT 0
+  Purpose: Overall/order-level discount percentage.
+- tax_amount: NUMERIC(12,2) NOT NULL DEFAULT 0
+  Purpose: Total tax amount.
+- total_amount: NUMERIC(12,2) NOT NULL DEFAULT 0
+  Purpose: Final quotation amount.
+- total_cost: NUMERIC(12,2) NOT NULL DEFAULT 0
+  Purpose: Total product/service cost.
+- margin_amount: NUMERIC(12,2) NOT NULL DEFAULT 0
+  Purpose: Total margin amount.
+- margin_percent: NUMERIC(5,2) NOT NULL DEFAULT 0
+  Purpose: Total margin percentage.
+- risk_score: NUMERIC(8,2) NOT NULL DEFAULT 0
+  Purpose: Latest calculated blended discount risk score.
+- approval_required: BOOLEAN NOT NULL DEFAULT FALSE
+  Purpose: Indicates whether the current quotation requires approval.
+- current_approval_level: VARCHAR NULL
+  Purpose: Current required approval level, e.g. MANAGER or FINANCE.
+- sent_at: TIMESTAMPTZ NULL
+  Purpose: Timestamp when quotation was sent to customer.
+- last_activity_at: TIMESTAMPTZ NOT NULL
+  Purpose: Used to identify stalled quotations.
+- valid_until: DATE NULL
+  Purpose: Quotation validity/expiry date.
+- created_at: TIMESTAMPTZ NOT NULL
+- updated_at: TIMESTAMPTZ NOT NULL
+
+Important:
+- totals, margin, risk_score, and approval_required are persisted snapshots
+  for efficient UI/reporting/workflow access.
+- FastAPI must recalculate them whenever relevant quotation data changes.
+- quotation lines retain relevant pricing/risk snapshots for auditability.
+
+TABLE 14: quotation_lines
+-------------------------
+Purpose:
+Individual products/services/subscriptions contained in a quotation.
+
+Fields:
+- id: UUID PK
+  Purpose: Quotation line identifier.
+- quotation_id: UUID FK -> quotations.id NOT NULL
+  Purpose: Parent quotation.
+- product_id: UUID FK -> products.id NOT NULL
+  Purpose: Product/service on the line.
+- variant_id: UUID FK -> product_variants.id NULL
+  Purpose: Optional product variant.
+- description: TEXT NULL
+  Purpose: Product description snapshot at quote time.
+- quantity: NUMERIC(12,2) NOT NULL
+  Purpose: Requested quantity.
+- unit_price: NUMERIC(12,2) NOT NULL
+  Purpose: Selling price per unit captured at quote time.
+- discount_percent: NUMERIC(5,2) NOT NULL DEFAULT 0
+  Purpose: Line-level discount percentage.
+- discount_amount: NUMERIC(12,2) NOT NULL DEFAULT 0
+  Purpose: Calculated line discount amount.
+- tax_rate: NUMERIC(5,2) NOT NULL DEFAULT 0
+  Purpose: Tax percentage captured at quote time.
+- line_total: NUMERIC(12,2) NOT NULL DEFAULT 0
+  Purpose: Final line total after applicable discount/tax logic.
+- unit_cost: NUMERIC(12,2) NOT NULL DEFAULT 0
+  Purpose: Cost snapshot for margin calculation.
+- margin_amount: NUMERIC(12,2) NOT NULL DEFAULT 0
+  Purpose: Line margin amount.
+- margin_percent: NUMERIC(5,2) NOT NULL DEFAULT 0
+  Purpose: Line margin percentage.
+- allowed_discount_percent: NUMERIC(5,2) NOT NULL DEFAULT 0
+  Purpose: Applicable discount ceiling captured at quote evaluation time.
+- discount_excess_percent: NUMERIC(5,2) NOT NULL DEFAULT 0
+  Purpose: Amount by which line discount exceeds applicable ceiling.
+- created_at: TIMESTAMPTZ NOT NULL
+- updated_at: TIMESTAMPTZ NOT NULL
+
+Important:
+allowed_discount_percent and discount_excess_percent are snapshots needed
+for auditability and risk explanation.
+
+TABLE 15: orders
+----------------
+Purpose:
+Represents a confirmed sales order originating from a quotation.
+
+Fields:
+- id: UUID PK
+  Purpose: Order identifier.
+- order_number: VARCHAR UNIQUE NOT NULL
+  Purpose: Human-readable order number.
+- quotation_id: UUID UNIQUE FK -> quotations.id NOT NULL
+  Purpose: Source quotation. One confirmed order per quotation.
+- customer_id: UUID FK -> customers.id NOT NULL
+  Purpose: Customer owning the order.
+- status: ENUM NOT NULL
+  Values:
+    CONFIRMED
+    FULFILLMENT
+    PARTIALLY_FULFILLED
+    FULFILLED
+    BILLING
+    COMPLETED
+    CANCELLED
+  Purpose: Order lifecycle state.
+- total_amount: NUMERIC(12,2) NOT NULL
+  Purpose: Confirmed order total.
+- confirmed_at: TIMESTAMPTZ NOT NULL
+  Purpose: Confirmation timestamp.
+- created_at: TIMESTAMPTZ NOT NULL
+- updated_at: TIMESTAMPTZ NOT NULL
+
+Important:
+No separate order_lines table is required for the hackathon. The confirmed
+quotation and quotation_lines remain the commercial line source. This avoids
+duplication and synchronization complexity.
+
+TABLE 16: recommendation_rules
+------------------------------
+Purpose:
+Simple configurable upsell/cross-sell relationships used to rank suggestions.
+
+Fields:
+- id: UUID PK
+  Purpose: Recommendation rule identifier.
+- source_product_id: UUID FK -> products.id NOT NULL
+  Purpose: Product already present in the quotation.
+- recommended_product_id: UUID FK -> products.id NOT NULL
+  Purpose: Product to recommend.
+- rule_type: ENUM NOT NULL
+  Values: UPSELL, CROSS_SELL.
+  Purpose: Recommendation type.
+- priority: INTEGER NOT NULL DEFAULT 0
+  Purpose: Configured ranking priority.
+- promotion_tag: VARCHAR NULL
+  Purpose: Promotion label shown in UI.
+- min_margin_percent: NUMERIC(5,2) NULL
+  Purpose: Minimum acceptable margin percentage for suggestion.
+- co_purchase_score: NUMERIC(8,2) NULL
+  Purpose: Historical co-purchase strength.
+- is_promoted: BOOLEAN NOT NULL DEFAULT FALSE
+  Purpose: Whether suggestion is currently promoted.
+- is_active: BOOLEAN NOT NULL DEFAULT TRUE
+  Purpose: Whether rule participates in recommendations.
+- created_at: TIMESTAMPTZ NOT NULL
+- updated_at: TIMESTAMPTZ NOT NULL
+
+Important:
+Advanced ML recommendation infrastructure is out of scope. This table is
+sufficient for deterministic ranking using configured rules/signals.
+
+TABLE 17: warehouses
+--------------------
+Purpose:
+Represents physical fulfillment warehouses/depot locations.
+
+Fields:
+- id: UUID PK
+  Purpose: Warehouse identifier.
+- name: VARCHAR NOT NULL
+  Purpose: Warehouse name.
+- code: VARCHAR UNIQUE NOT NULL
+  Purpose: Short warehouse code.
+- address: TEXT NULL
+  Purpose: Warehouse address/location.
+- shipping_cost_weight: NUMERIC(8,2) NOT NULL DEFAULT 1
+  Purpose: Weight used by automatic warehouse split logic.
+- replenishment_enabled: BOOLEAN NOT NULL DEFAULT FALSE
+  Purpose: Whether replenishment rules are active.
+- is_active: BOOLEAN NOT NULL DEFAULT TRUE
+  Purpose: Whether warehouse can be used.
+- created_at: TIMESTAMPTZ NOT NULL
+- updated_at: TIMESTAMPTZ NOT NULL
+
+TABLE 18: inventory
+-------------------
+Purpose:
+Current product stock by warehouse.
+
+Fields:
+- id: UUID PK
+  Purpose: Inventory record identifier.
+- warehouse_id: UUID FK -> warehouses.id NOT NULL
+  Purpose: Warehouse containing inventory.
+- product_id: UUID FK -> products.id NOT NULL
+  Purpose: Product in inventory.
+- quantity_on_hand: NUMERIC(12,2) NOT NULL DEFAULT 0
+  Purpose: Physical quantity currently held.
+- quantity_reserved: NUMERIC(12,2) NOT NULL DEFAULT 0
+  Purpose: Quantity already reserved for orders.
+- reorder_level: NUMERIC(12,2) NOT NULL DEFAULT 0
+  Purpose: Threshold at which replenishment should be considered.
+- reorder_quantity: NUMERIC(12,2) NOT NULL DEFAULT 0
+  Purpose: Quantity to replenish when reorder is triggered.
+- updated_at: TIMESTAMPTZ NOT NULL
+  Purpose: Last stock update.
+
+Constraint:
+- UNIQUE(warehouse_id, product_id)
+
+Derived:
+available_stock = quantity_on_hand - quantity_reserved
+
+TABLE 19: fulfillment_allocations
+---------------------------------
+Purpose:
+Represents the warehouse-level allocation of an order line.
+
+Fields:
+- id: UUID PK
+  Purpose: Allocation identifier.
+- order_id: UUID FK -> orders.id NOT NULL
+  Purpose: Related order.
+- quotation_line_id: UUID FK -> quotation_lines.id NOT NULL
+  Purpose: Specific commercial line being fulfilled.
+- warehouse_id: UUID FK -> warehouses.id NOT NULL
+  Purpose: Warehouse supplying the quantity.
+- quantity_allocated: NUMERIC(12,2) NOT NULL
+  Purpose: Quantity assigned to this warehouse.
+- quantity_fulfilled: NUMERIC(12,2) NOT NULL DEFAULT 0
+  Purpose: Quantity actually fulfilled.
+- estimated_shipping_cost: NUMERIC(12,2) NOT NULL DEFAULT 0
+  Purpose: Estimated shipping cost for this allocation.
+- is_suggested: BOOLEAN NOT NULL DEFAULT FALSE
+  Purpose: Indicates allocation was produced by automatic split logic.
+- is_manual_override: BOOLEAN NOT NULL DEFAULT FALSE
+  Purpose: Indicates allocation was manually changed.
+- status: ENUM NOT NULL
+  Values: SUGGESTED, ACCEPTED, FULFILLED, CANCELLED.
+  Purpose: Allocation state.
+- created_at: TIMESTAMPTZ NOT NULL
+- updated_at: TIMESTAMPTZ NOT NULL
+
+TABLE 20: backorders
+--------------------
+Purpose:
+Represents quantities that cannot currently be fulfilled because inventory
+is insufficient.
+
+Fields:
+- id: UUID PK
+  Purpose: Backorder identifier.
+- order_id: UUID FK -> orders.id NOT NULL
+  Purpose: Related order.
+- quotation_line_id: UUID FK -> quotation_lines.id NOT NULL
+  Purpose: Commercial line with outstanding quantity.
+- quantity_backordered: NUMERIC(12,2) NOT NULL
+  Purpose: Quantity originally placed on backorder.
+- quantity_remaining: NUMERIC(12,2) NOT NULL
+  Purpose: Quantity still awaiting fulfillment.
+- status: ENUM NOT NULL
+  Values: OPEN, CONSOLIDATION_AVAILABLE, CONSOLIDATED, FULFILLED, CANCELLED.
+  Purpose: Backorder lifecycle state.
+- consolidation_requested: BOOLEAN NOT NULL DEFAULT FALSE
+  Purpose: Indicates whether consolidation action has been requested/selected.
+- created_at: TIMESTAMPTZ NOT NULL
+- updated_at: TIMESTAMPTZ NOT NULL
+
+TABLE 21: subscription_plans
+----------------------------
+Purpose:
+Configurable recurring billing plans.
+
+Fields:
+- id: UUID PK
+  Purpose: Subscription plan identifier.
+- name: VARCHAR NOT NULL
+  Purpose: Plan name.
+- billing_interval: ENUM NOT NULL
+  Values: MONTHLY, QUARTERLY, YEARLY.
+  Purpose: Recurring billing period.
+- interval_count: INTEGER NOT NULL DEFAULT 1
+  Purpose: Number of interval units per billing period; retained for
+  implementation flexibility.
+- proration_method: ENUM NOT NULL
+  Purpose: Configured method for mid-cycle quantity/plan changes.
+- cancellation_policy: VARCHAR / ENUM NOT NULL
+  Purpose: Configured cancellation behavior.
+- refund_policy: VARCHAR / ENUM NOT NULL
+  Purpose: Configured partial-refund/credit behavior.
+- is_active: BOOLEAN NOT NULL DEFAULT TRUE
+  Purpose: Whether plan can be used.
+- created_at: TIMESTAMPTZ NOT NULL
+- updated_at: TIMESTAMPTZ NOT NULL
+
+Note:
+The exact proration formula, cancellation rule details, and refund behavior
+are implementation/configuration decisions because the requirements do not
+prescribe exact formulas.
+
+TABLE 22: subscriptions
+-----------------------
+Purpose:
+Represents an actual recurring subscription created from a confirmed order.
+
+Fields:
+- id: UUID PK
+  Purpose: Subscription identifier.
+- order_id: UUID FK -> orders.id NOT NULL
+  Purpose: Originating order.
+- quotation_line_id: UUID FK -> quotation_lines.id NOT NULL
+  Purpose: Original recurring commercial line.
+- customer_id: UUID FK -> customers.id NOT NULL
+  Purpose: Subscription customer.
+- product_id: UUID FK -> products.id NOT NULL
+  Purpose: Recurring product/service.
+- plan_id: UUID FK -> subscription_plans.id NOT NULL
+  Purpose: Recurring plan.
+- quantity: NUMERIC(12,2) NOT NULL
+  Purpose: Current subscribed quantity.
+- unit_price: NUMERIC(12,2) NOT NULL
+  Purpose: Recurring price per unit.
+- start_date: DATE NOT NULL
+  Purpose: Subscription start date.
+- next_billing_date: DATE NOT NULL
+  Purpose: Next scheduled billing date.
+- status: ENUM NOT NULL
+  Values: ACTIVE, MODIFIED, CANCELLED, PAUSED.
+  Purpose: Subscription lifecycle state.
+- created_at: TIMESTAMPTZ NOT NULL
+- updated_at: TIMESTAMPTZ NOT NULL
+
+TABLE 23: billing_schedules
+---------------------------
+Purpose:
+Stores recurring billing events/schedule entries generated for subscriptions.
+
+Fields:
+- id: UUID PK
+  Purpose: Billing schedule identifier.
+- subscription_id: UUID FK -> subscriptions.id NOT NULL
+  Purpose: Subscription producing the schedule entry.
+- billing_date: DATE NOT NULL
+  Purpose: Date billing is due/generated.
+- amount: NUMERIC(12,2) NOT NULL
+  Purpose: Scheduled billing amount.
+- status: ENUM NOT NULL
+  Values: SCHEDULED, INVOICED, PAID, CANCELLED.
+  Purpose: Schedule event state.
+- proration_amount: NUMERIC(12,2) NOT NULL DEFAULT 0
+  Purpose: Proration adjustment included in the schedule event.
+- created_at: TIMESTAMPTZ NOT NULL
+- updated_at: TIMESTAMPTZ NOT NULL
+
+TABLE 24: invoices
+------------------
+Purpose:
+Represents one-time invoices, recurring invoices, and credit notes.
+
+Fields:
+- id: UUID PK
+  Purpose: Invoice identifier.
+- invoice_number: VARCHAR UNIQUE NOT NULL
+  Purpose: Human-readable invoice number.
+- order_id: UUID FK -> orders.id NOT NULL
+  Purpose: Related order.
+- billing_schedule_id: UUID FK -> billing_schedules.id NULL
+  Purpose: Recurring billing source; NULL for ordinary one-time invoices.
+- invoice_type: ENUM NOT NULL
+  Values: ONE_TIME, RECURRING, CREDIT_NOTE.
+  Purpose: Billing document type.
+- subtotal: NUMERIC(12,2) NOT NULL
+  Purpose: Invoice subtotal.
+- tax_amount: NUMERIC(12,2) NOT NULL DEFAULT 0
+  Purpose: Invoice tax.
+- total_amount: NUMERIC(12,2) NOT NULL
+  Purpose: Total invoice amount.
+- paid_amount: NUMERIC(12,2) NOT NULL DEFAULT 0
+  Purpose: Total amount paid against invoice.
+- status: ENUM NOT NULL
+  Values: DRAFT, ISSUED, PARTIALLY_PAID, PAID, CANCELLED.
+  Purpose: Invoice lifecycle/payment state.
+- due_date: DATE NULL
+  Purpose: Payment due date.
+- issued_at: TIMESTAMPTZ NULL
+  Purpose: Invoice issue timestamp.
+- created_at: TIMESTAMPTZ NOT NULL
+- updated_at: TIMESTAMPTZ NOT NULL
+
+Billing model:
+- One-time invoice: billing_schedule_id = NULL and invoice_type = ONE_TIME.
+- Recurring invoice: billing_schedule_id references a schedule entry and
+  invoice_type = RECURRING.
+- Credit note: invoice_type = CREDIT_NOTE.
+
+TABLE 25: payments
+------------------
+Purpose:
+Records payments made against invoices.
+
+Fields:
+- id: UUID PK
+  Purpose: Payment identifier.
+- invoice_id: UUID FK -> invoices.id NOT NULL
+  Purpose: Invoice receiving payment.
+- amount: NUMERIC(12,2) NOT NULL
+  Purpose: Payment amount.
+- payment_method: VARCHAR NOT NULL
+  Purpose: Payment method such as card, bank transfer, etc.
+- transaction_reference: VARCHAR NULL
+  Purpose: Optional external/payment reference.
+- payment_date: TIMESTAMPTZ NOT NULL
+  Purpose: Payment timestamp.
+- status: ENUM NOT NULL
+  Values: RECORDED, FAILED, REFUNDED.
+  Purpose: Payment state.
+- created_at: TIMESTAMPTZ NOT NULL
+- updated_at: TIMESTAMPTZ NOT NULL
+
+Invoice status calculation:
+- paid_amount >= total_amount -> PAID
+- paid_amount > 0 and paid_amount < total_amount -> PARTIALLY_PAID
+- paid_amount = 0 after issuance -> ISSUED
+
+TABLE 26: negotiation_requests
+------------------------------
+Purpose:
+Stores customer requests to change or renegotiate a quotation.
+
+Fields:
+- id: UUID PK
+  Purpose: Negotiation request identifier.
+- quotation_id: UUID FK -> quotations.id NOT NULL
+  Purpose: Quotation being negotiated.
+- customer_id: UUID FK -> customers.id NOT NULL
+  Purpose: Customer making request.
+- requested_by: UUID FK -> users.id NOT NULL
+  Purpose: Customer portal user submitting request.
+- requested_discount_percent: NUMERIC(5,2) NULL
+  Purpose: Proposed counter-discount.
+- requested_changes: JSONB NULL
+  Purpose: Flexible requested quotation changes.
+- reason: TEXT NULL
+  Purpose: Customer explanation/reason.
+- status: ENUM NOT NULL
+  Values: SUBMITTED, UNDER_REVIEW, ACCEPTED, REJECTED, APPLIED.
+  Purpose: Negotiation request lifecycle.
+- created_at: TIMESTAMPTZ NOT NULL
+- updated_at: TIMESTAMPTZ NOT NULL
+
+Important:
+When a negotiation changes commercial terms, FastAPI must recalculate
+pricing, margin, discount risk, and approval requirements. If thresholds are
+exceeded, a new approval_instance must be created.
+
+TABLE 27: negotiation_comments
+------------------------------
+Purpose:
+Stores customer/internal comments and line-level questions associated with
+a quotation.
+
+Fields:
+- id: UUID PK
+  Purpose: Comment identifier.
+- quotation_id: UUID FK -> quotations.id NOT NULL
+  Purpose: Quotation being discussed.
+- quotation_line_id: UUID FK -> quotation_lines.id NULL
+  Purpose: Specific quotation line when comment is line-level.
+- user_id: UUID FK -> users.id NOT NULL
+  Purpose: User who authored the comment.
+- comment: TEXT NOT NULL
+  Purpose: Comment/question text.
+- created_at: TIMESTAMPTZ NOT NULL
+- updated_at: TIMESTAMPTZ NOT NULL
+
+TABLE 28: deal_alerts
+---------------------
+Purpose:
+Stores actionable deal-health/anomaly alerts.
+
+Fields:
+- id: UUID PK
+  Purpose: Alert identifier.
+- quotation_id: UUID FK -> quotations.id NOT NULL
+  Purpose: Related quotation/deal.
+- alert_type: ENUM NOT NULL
+  Values: STALLED, DISCOUNT_ANOMALY, DELIVERY_SLIPPAGE.
+  Purpose: Alert classification.
+- severity: ENUM NOT NULL
+  Values: LOW, MEDIUM, HIGH.
+  Purpose: Alert urgency.
+- title: VARCHAR NOT NULL
+  Purpose: Short alert title.
+- message: TEXT NOT NULL
+  Purpose: Explanation displayed to user.
+- metric_value: NUMERIC(12,2) NULL
+  Purpose: Calculated value that triggered the alert.
+- threshold_value: NUMERIC(12,2) NULL
+  Purpose: Configured/comparison threshold.
+- status: ENUM NOT NULL
+  Values: OPEN, ACKNOWLEDGED, RESOLVED.
+  Purpose: Alert lifecycle.
+- action_taken: VARCHAR NULL
+  Purpose: Nudge/escalation action taken from the alert, if any.
+- created_at: TIMESTAMPTZ NOT NULL
+- updated_at: TIMESTAMPTZ NOT NULL
+
+Important:
+A separate deal_health table is intentionally NOT created. Deal health is
+derived from quotation activity, risk, fulfillment state, and alerts.
+
+TABLE 29: audit_logs
+--------------------
+Purpose:
+Cross-cutting audit trail for important business actions and changes.
+
+Fields:
+- id: UUID PK
+  Purpose: Audit record identifier.
+- user_id: UUID FK -> users.id NULL
+  Purpose: User who performed the action. NULL may be allowed for
+  system-generated actions.
+- entity_type: VARCHAR NOT NULL
+  Purpose: Type of affected entity, e.g. QUOTATION, APPROVAL, ORDER.
+- entity_id: UUID NOT NULL
+  Purpose: Identifier of affected entity.
+- action: VARCHAR NOT NULL
+  Purpose: Action performed, e.g. CREATE, EDIT, APPROVE, REJECT, RETURN.
+- old_values: JSONB NULL
+  Purpose: Previous values before the change.
+- new_values: JSONB NULL
+  Purpose: New values after the change.
+- reason: TEXT NULL
+  Purpose: User/system reason associated with the action.
+- created_at: TIMESTAMPTZ NOT NULL
+  Purpose: Action timestamp.
+
+Audit requirements:
+At minimum, approval, rejection, and edit actions must be auditable with
+user, timestamp, and reason where applicable.
+
+======================================================================
+KEY RELATIONSHIPS
+======================================================================
+
+IDENTITY / CUSTOMER
+-------------------
+users.customer_id -> customers.id
+customers.customer_tier_id -> customer_tiers.id
+
+PRODUCT / PRICING
+-----------------
+products.category_id -> product_categories.id
+product_variants.product_id -> products.id
+price_lists.customer_tier_id -> customer_tiers.id
+price_list_items.price_list_id -> price_lists.id
+price_list_items.product_id -> products.id
+price_list_items.variant_id -> product_variants.id
+
+DISCOUNT
+--------
+discount_rules.customer_tier_id -> customer_tiers.id
+discount_rules.category_id -> product_categories.id
+
+APPROVAL
+--------
+approval_instances.quotation_id -> quotations.id
+approval_steps.approval_instance_id -> approval_instances.id
+approval_steps.approver_user_id -> users.id
+
+SALES
+-----
+quotations.customer_id -> customers.id
+quotations.sales_rep_id -> users.id
+quotation_lines.quotation_id -> quotations.id
+quotation_lines.product_id -> products.id
+quotation_lines.variant_id -> product_variants.id
+orders.quotation_id -> quotations.id
+orders.customer_id -> customers.id
+
+RECOMMENDATIONS
+---------------
+recommendation_rules.source_product_id -> products.id
+recommendation_rules.recommended_product_id -> products.id
+
+INVENTORY / FULFILLMENT
+-----------------------
+inventory.warehouse_id -> warehouses.id
+inventory.product_id -> products.id
+fulfillment_allocations.order_id -> orders.id
+fulfillment_allocations.quotation_line_id -> quotation_lines.id
+fulfillment_allocations.warehouse_id -> warehouses.id
+backorders.order_id -> orders.id
+backorders.quotation_line_id -> quotation_lines.id
+
+SUBSCRIPTION / BILLING
+----------------------
+subscriptions.order_id -> orders.id
+subscriptions.quotation_line_id -> quotation_lines.id
+subscriptions.customer_id -> customers.id
+subscriptions.product_id -> products.id
+subscriptions.plan_id -> subscription_plans.id
+billing_schedules.subscription_id -> subscriptions.id
+invoices.order_id -> orders.id
+invoices.billing_schedule_id -> billing_schedules.id
+payments.invoice_id -> invoices.id
+
+NEGOTIATION
+-----------
+negotiation_requests.quotation_id -> quotations.id
+negotiation_requests.customer_id -> customers.id
+negotiation_requests.requested_by -> users.id
+negotiation_comments.quotation_id -> quotations.id
+negotiation_comments.quotation_line_id -> quotation_lines.id
+negotiation_comments.user_id -> users.id
+
+MONITORING / AUDIT
+------------------
+deal_alerts.quotation_id -> quotations.id
+audit_logs.user_id -> users.id
+
+======================================================================
+CRITICAL BUSINESS MODEL DECISIONS
+======================================================================
+
+1. QUOTATION IS THE CENTRAL SALES AGGREGATE
+-------------------------------------------
+Quotation is the primary commercial document.
+
+Primary flow:
+customer -> quotation -> quotation_lines -> approval/negotiation
+-> order -> fulfillment/billing
+
+2. APPROVAL CONFIGURATION VS EXECUTION
+--------------------------------------
+approval_policies = reusable configuration.
+approval_instances = actual approval workflow executions.
+approval_steps = actual reviewer steps.
+
+A quotation may have multiple approval_instances because negotiation can
+cause the same quotation to re-enter approval.
+
+3. NO order_lines TABLE
+-----------------------
+Confirmed order lines are represented by the quotation's confirmed
+quotation_lines.
+
+Reason:
+Avoid duplicating commercial line data and synchronization problems during
+the hackathon.
+
+4. PRICING/RISK SNAPSHOTS
+-------------------------
+quotation_lines must capture:
+- unit_price
+- unit_cost
+- tax_rate
+- allowed_discount_percent
+- discount_excess_percent
+
+quotations must capture:
+- subtotal
+- discount_amount
+- tax_amount
+- total_amount
+- total_cost
+- margin_amount
+- margin_percent
+- risk_score
+- approval_required
+
+These values are recalculated by FastAPI whenever relevant data changes.
+
+5. HYBRID BILLING
+-----------------
+A single order may contain:
+- one-time quotation lines
+- recurring subscription quotation lines
+
+One-time billing uses invoices with invoice_type=ONE_TIME.
+Recurring billing uses subscriptions -> billing_schedules -> invoices.
+
+6. CREDIT NOTES / REFUNDS
+-------------------------
+No separate refund table is required initially.
+Credit notes can be represented by invoices with:
+invoice_type = CREDIT_NOTE
+
+Exact refund behavior is governed by subscription-plan configuration and
+backend business logic.
+
+7. DEAL HEALTH
+--------------
+No deal_health table is required.
+Deal health is calculated from:
+- quotation.last_activity_at
+- quotation.risk_score
+- fulfillment/order state
+- deal_alerts
+
+8. REPORTING
+------------
+No report/report_definition table is required for the initial schema.
+Reporting is implemented through backend SQL queries/aggregations over
+transactional tables.
+
+9. CURRENCY
+-----------
+No currencies table is required.
+Currency is represented as a code on price_lists.
+Multi-currency beyond required currency-specific price-list behavior is a
+bonus scope item.
+
+10. MULTI-COMPANY
+-----------------
+No company/company hierarchy tables are required.
+Multi-company support is explicitly bonus scope.
+
+======================================================================
+BACKEND-CALCULATED VALUES
+======================================================================
+
+The following must be calculated/enforced in FastAPI application logic:
+
+PRICING
+- Applicable product price.
+- Applicable price-list price.
+- Variant extra price.
+
+DISCOUNT GOVERNANCE
+- Applicable customer-tier discount limit.
+- Applicable category discount limit.
+- Effective discount ceiling.
+- Line discount excess.
+- Blended quotation risk score.
+- Approval requirement.
+- Required approval level.
+
+MARGIN
+- Line margin.
+- Total margin.
+- Margin percentage.
+- Margin delta from recommendations.
+
+APPROVAL
+- Approval policy selection.
+- Approval step creation.
+- Approval state transitions.
+- Re-approval after negotiation.
+
+RECOMMENDATIONS
+- Suggestion eligibility.
+- Minimum margin filtering.
+- Ranking using configured priority, promotion state, and co-purchase
+  signals.
+
+FULFILLMENT
+- Available inventory.
+- Automatic warehouse split.
+- Shipment estimate.
+- Shipping cost estimate.
+- Backorder quantity.
+- Consolidation availability.
+
+BILLING
+- Billing schedule generation.
+- Proration.
+- Subscription modification.
+- Cancellation behavior.
+- Refund/credit-note behavior.
+- Invoice status after payments.
+
+MONITORING
+- Stalled-deal detection.
+- Discount anomaly detection.
+- Delivery promise slippage detection.
+
+======================================================================
+INTENTIONALLY OMITTED TABLES
+======================================================================
+
+The following entities are intentionally NOT separate tables in the
+hackathon schema:
+
+1. roles
+   Reason: Stable role set; use enum.
+
+2. quotation_status_history
+   Reason: audit_logs captures important changes.
+
+3. order_lines
+   Reason: quotation_lines remain the commercial source for the confirmed
+   order.
+
+4. deal_health
+   Reason: health is derived; deal_alerts stores actionable findings.
+
+5. reports
+   Reason: reports are query/aggregation outputs.
+
+6. currencies
+   Reason: currency-specific pricing can use a VARCHAR(3) code.
+
+7. companies
+   Reason: multi-company is bonus/out of core scope.
+
+8. shipping_methods
+   Reason: not required by the finalized requirements.
+
+9. tax_rates
+   Reason: current hackathon scope can use tax_rate on products and
+   quotation line snapshots.
+
+10. refund_records
+    Reason: credit notes can be represented using invoices with
+    invoice_type=CREDIT_NOTE.
+
+======================================================================
+INDEXING REQUIREMENTS
+======================================================================
+
+Recommended indexes:
+
+users:
+- auth_user_id UNIQUE
+- email UNIQUE
+
+customers:
+- customer_tier_id
+
+products:
+- category_id
+- sku UNIQUE
+
+price_list_items:
+- price_list_id
+- product_id
+
+discount_rules:
+- customer_tier_id
+- category_id
+
+quotations:
+- customer_id
+- sales_rep_id
+- status
+- last_activity_at
+
+quotation_lines:
+- quotation_id
+- product_id
+
+orders:
+- quotation_id UNIQUE
+- customer_id
+- status
+
+inventory:
+- warehouse_id + product_id UNIQUE
+
+fulfillment_allocations:
+- order_id
+- warehouse_id
+
+backorders:
+- order_id
+- status
+
+subscriptions:
+- customer_id
+- status
+- next_billing_date
+
+billing_schedules:
+- subscription_id
+- billing_date
+- status
+
+invoices:
+- order_id
+- status
+
+payments:
+- invoice_id
+
+negotiation_requests:
+- quotation_id
+- status
+
+negotiation_comments:
+- quotation_id
+
+deal_alerts:
+- quotation_id
+- status
+- alert_type
+
+audit_logs:
+- entity_type + entity_id
+- user_id
+- created_at
+
+======================================================================
+CORE ENUM DEFINITIONS
+======================================================================
+
+USER ROLE:
+SALES_REP
+SALES_MANAGER
+FINANCE_OPERATIONS
+ADMIN
+CUSTOMER
+
+QUOTATION STATUS:
+DRAFT
+SENT
+UNDER_NEGOTIATION
+PENDING_APPROVAL
+APPROVED
+REJECTED
+REVISION_REQUIRED
+CONFIRMED
+
+APPROVAL INSTANCE / STEP STATUS:
+PENDING
+APPROVED
+REJECTED
+REVISION_REQUIRED
+
+APPROVER ROLE:
+SALES_MANAGER
+FINANCE_OPERATIONS
+
+RECOMMENDATION TYPE:
+UPSELL
+CROSS_SELL
+
+FULFILLMENT ALLOCATION STATUS:
+SUGGESTED
+ACCEPTED
+FULFILLED
+CANCELLED
+
+BACKORDER STATUS:
+OPEN
+CONSOLIDATION_AVAILABLE
+CONSOLIDATED
+FULFILLED
+CANCELLED
+
+SUBSCRIPTION BILLING INTERVAL:
+MONTHLY
+QUARTERLY
+YEARLY
+
+SUBSCRIPTION STATUS:
+ACTIVE
+MODIFIED
+CANCELLED
+PAUSED
+
+BILLING SCHEDULE STATUS:
+SCHEDULED
+INVOICED
+PAID
+CANCELLED
+
+INVOICE TYPE:
+ONE_TIME
+RECURRING
+CREDIT_NOTE
+
+INVOICE STATUS:
+DRAFT
+ISSUED
+PARTIALLY_PAID
+PAID
+CANCELLED
+
+PAYMENT STATUS:
+RECORDED
+FAILED
+REFUNDED
+
+NEGOTIATION REQUEST STATUS:
+SUBMITTED
+UNDER_REVIEW
+ACCEPTED
+REJECTED
+APPLIED
+
+DEAL ALERT TYPE:
+STALLED
+DISCOUNT_ANOMALY
+DELIVERY_SLIPPAGE
+
+DEAL ALERT SEVERITY:
+LOW
+MEDIUM
+HIGH
+
+DEAL ALERT STATUS:
+OPEN
+ACKNOWLEDGED
+RESOLVED
+
+======================================================================
+CORE CONSTRAINTS / INVARIANTS
+======================================================================
+
+1. Every quotation must belong to exactly one customer.
+
+2. Every quotation must have exactly one responsible sales representative.
+
+3. Every quotation line must belong to exactly one quotation.
+
+4. Every quotation line must reference exactly one product and may reference
+   one variant.
+
+5. Every confirmed order must reference exactly one quotation.
+
+6. One quotation may produce at most one order in the initial implementation.
+
+7. Inventory uniqueness:
+   one product + one warehouse = one inventory row.
+
+8. Available stock:
+   available_stock = quantity_on_hand - quantity_reserved.
+
+9. Fulfillment allocation quantities must never exceed available inventory
+   unless the allocation is explicitly represented as backordered.
+
+10. A quotation with approval_required=true must have an active/pending
+    approval workflow before it can be confirmed.
+
+11. Finance approval must not appear when the selected approval policy does
+    not require Finance.
+
+12. Approval is sequential:
+    when Finance is required, Manager step precedes Finance step.
+
+13. Customer negotiation changes that affect pricing/discount terms must
+    trigger recalculation of margin and risk.
+
+14. If negotiated terms require approval, the quotation must create a new
+    approval_instance.
+
+15. A quotation may re-enter approval multiple times across its lifecycle.
+
+16. Invoice paid_amount must not logically exceed total_amount unless the
+    backend explicitly supports overpayment in a future enhancement.
+
+17. Invoice status must remain consistent with paid_amount.
+
+18. Recurring quotation lines must be capable of producing subscriptions
+    and billing schedules.
+
+19. One-time quotation lines must be capable of one-time billing without
+    requiring a subscription.
+
+20. Important business actions must create audit_logs records.
+
+======================================================================
+REQUIRED INDEX-DRIVEN QUERIES
+======================================================================
+
+The schema must efficiently support at minimum:
+
+1. List quotations by sales representative.
+2. List quotations by customer.
+3. List quotations by status.
+4. Find stalled quotations using last_activity_at.
+5. Find pending approvals.
+6. Find approval steps assigned to a user.
+7. Find products by category.
+8. Find inventory for a product across all warehouses.
+9. Find fulfillment allocations for an order.
+10. Find open backorders.
+11. Find upcoming recurring billing schedules.
+12. Find unpaid/partially paid invoices.
+13. Find negotiations for a quotation.
+14. Find open deal alerts.
+15. Retrieve audit history for a quotation/order/approval.
+16. Reporting by date range.
+17. Reporting by sales rep.
+18. Reporting by product/category.
+19. Reporting by approval status.
+
+======================================================================
+RELATIONSHIP SUMMARY
+======================================================================
+
+Customer side:
+users -> customers -> customer_tiers
+
+Catalog side:
+product_categories -> products -> product_variants
+
+Pricing side:
+customer_tiers -> price_lists -> price_list_items -> products
+
+Discount side:
+customer_tiers/product_categories -> discount_rules
+
+Sales side:
+customers -> quotations -> quotation_lines -> products
+quotations -> orders
+
+Approval side:
+quotations -> approval_instances -> approval_steps -> users
+
+Recommendation side:
+products -> recommendation_rules -> products
+
+Inventory side:
+warehouses -> inventory <- products
+
+Fulfillment side:
+orders -> fulfillment_allocations -> warehouses
+orders -> backorders
+
+Subscription side:
+orders -> subscriptions -> subscription_plans
+subscriptions -> billing_schedules
+
+Billing side:
+orders -> invoices -> payments
+
+Negotiation side:
+quotations -> negotiation_requests
+quotations -> negotiation_comments
+
+Monitoring side:
+quotations -> deal_alerts
+
+Audit side:
+users -> audit_logs
+audit_logs -> arbitrary entity via entity_type/entity_id
+
+======================================================================
+SCHEMA DESIGN PRINCIPLE FOR FUTURE AI WORK
+======================================================================
+
+When using this document for future technical artifacts:
+
+1. Treat this schema as FINAL unless the user explicitly requests a schema
+   change.
+
+2. Do not introduce additional tables merely because they are common in
+   CRM/ERP systems.
+
+3. Do not remove any of the 29 finalized tables without explaining which
+   requirement becomes harder or impossible to satisfy.
+
+4. Preserve the distinction between:
+   - configuration tables
+   - transactional tables
+   - workflow execution tables
+   - audit/alert tables.
+
+5. Preserve quotation_lines as the commercial line source for orders.
+
+6. Preserve approval_instances/approval_steps as separate execution
+   records so quotation re-approval is possible.
+
+7. Keep business rules in FastAPI services, not database triggers or React
+   code unless a later explicit architectural decision changes this.
+
+8. Use SQLAlchemy 2.x models that map directly to these tables.
+
+9. Use Alembic migrations to create and evolve the PostgreSQL schema.
+
+10. Any future API, backend module, frontend workflow, seed-data plan, or
+    test plan must be traceable to these entities and relationships.
+
+11. If a future requirement conflicts with this schema, explicitly identify
+    the conflict before changing the schema.
+
+12. Exact formulas that the requirements leave unspecified remain backend
+    implementation decisions:
+    - blended risk score formula
+    - warehouse optimization formula
+    - anomaly detection formula
+    - delivery slippage formula
+    - subscription proration formula
+
+======================================================================
+FINAL SCHEMA CHECK
+======================================================================
+
+TABLE COUNT: 29
+
+CORE QUOTATION FLOW:
+customers
+-> quotations
+-> quotation_lines
+-> approval_instances / negotiation_requests
+-> orders
+-> fulfillment_allocations / backorders
+-> invoices / subscriptions
+-> payments
+
+CONFIGURATION COVERAGE:
+products
+product_categories
+product_variants
+customer_tiers
+price_lists
+price_list_items
+discount_rules
+approval_policies
+warehouses
+subscription_plans
+recommendation_rules
+
+WORKFLOW COVERAGE:
+quotations
+approval_instances
+approval_steps
+orders
+fulfillment_allocations
+backorders
+subscriptions
+billing_schedules
+invoices
+payments
+negotiation_requests
+negotiation_comments
+
+MONITORING/AUDIT COVERAGE:
+deal_alerts
+audit_logs
+
+The schema is considered complete for the finalized DealFlow360 hackathon
+scope when all 29 tables and their stated relationships are implemented,
+with business rules enforced by the FastAPI backend.

@@ -1,0 +1,1 @@
+"""Audit endpoints router."""

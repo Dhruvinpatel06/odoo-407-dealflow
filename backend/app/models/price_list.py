@@ -1,0 +1,1 @@
+"""PriceList SQLAlchemy model."""

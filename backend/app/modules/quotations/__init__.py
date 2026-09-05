@@ -1,0 +1,1 @@
+"""Quotations module package."""

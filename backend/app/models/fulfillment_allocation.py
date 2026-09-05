@@ -1,0 +1,1 @@
+"""FulfillmentAllocation SQLAlchemy model."""

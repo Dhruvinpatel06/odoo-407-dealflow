@@ -1,0 +1,1 @@
+"""Invoice SQLAlchemy model."""

@@ -1,0 +1,1 @@
+"""ProductVariant SQLAlchemy model."""

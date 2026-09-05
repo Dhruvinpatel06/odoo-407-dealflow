@@ -1,0 +1,1 @@
+"""Subscriptions endpoints router."""

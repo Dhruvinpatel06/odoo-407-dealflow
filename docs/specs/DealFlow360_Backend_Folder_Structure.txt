@@ -1,0 +1,1649 @@
+DealFlow360 — FINAL BACKEND FOLDER STRUCTURE
+================================================
+
+STATUS
+------
+Recommended implementation structure for the finalized DealFlow360 backend.
+
+DESIGN BASIS
+------------
+This structure is derived from the finalized:
+- Technology Stack
+- Requirements & Scope
+- Database Schema
+- API Endpoint Specification
+
+Confirmed backend architecture:
+- Python
+- FastAPI
+- Pydantic
+- SQLAlchemy 2.x
+- Alembic
+- Supabase PostgreSQL
+- Supabase Auth
+- Supabase Realtime
+- Pytest
+- Modular Monolith
+
+PRIMARY ARCHITECTURAL RULE
+--------------------------
+The backend is the authoritative application/business-logic layer.
+
+Keep these responsibilities separate:
+1. Router/API layer:
+   HTTP concerns, authentication dependencies, request/response handling.
+2. Schema layer:
+   Pydantic request/response validation and serialization.
+3. Service layer:
+   Business workflows and state transitions.
+4. Engine layer:
+   Complex reusable business calculations/rules.
+5. Repository layer:
+   Database queries and persistence operations.
+6. Model layer:
+   SQLAlchemy database mappings.
+7. Core layer:
+   Cross-cutting infrastructure such as DB session, configuration,
+   authentication/JWT verification, authorization, exceptions, logging.
+
+Do NOT put core business rules directly inside FastAPI route handlers.
+
+======================================================================
+1. RECOMMENDED ROOT STRUCTURE
+======================================================================
+
+backend/
+│
+├── app/
+│   ├── main.py
+│   │
+│   ├── core/
+│   │   ├── config.py
+│   │   ├── database.py
+│   │   ├── security.py
+│   │   ├── dependencies.py
+│   │   ├── exceptions.py
+│   │   ├── exception_handlers.py
+│   │   └── logging.py
+│   │
+│   ├── api/
+│   │   └── router.py
+│   │
+│   ├── models/
+│   │   ├── __init__.py
+│   │   ├── user.py
+│   │   ├── customer.py
+│   │   ├── customer_tier.py
+│   │   ├── product_category.py
+│   │   ├── product.py
+│   │   ├── product_variant.py
+│   │   ├── price_list.py
+│   │   ├── price_list_item.py
+│   │   ├── discount_rule.py
+│   │   ├── approval_policy.py
+│   │   ├── approval_instance.py
+│   │   ├── approval_step.py
+│   │   ├── quotation.py
+│   │   ├── quotation_line.py
+│   │   ├── order.py
+│   │   ├── recommendation_rule.py
+│   │   ├── warehouse.py
+│   │   ├── inventory.py
+│   │   ├── fulfillment_allocation.py
+│   │   ├── backorder.py
+│   │   ├── subscription_plan.py
+│   │   ├── subscription.py
+│   │   ├── billing_schedule.py
+│   │   ├── invoice.py
+│   │   ├── payment.py
+│   │   ├── negotiation_request.py
+│   │   ├── negotiation_comment.py
+│   │   ├── deal_alert.py
+│   │   └── audit_log.py
+│   │
+│   ├── modules/
+│   │   ├── auth/
+│   │   ├── users/
+│   │   ├── customers/
+│   │   ├── catalog/
+│   │   ├── pricing/
+│   │   ├── discounts/
+│   │   ├── approvals/
+│   │   ├── quotations/
+│   │   ├── recommendations/
+│   │   ├── fulfillment/
+│   │   ├── subscriptions/
+│   │   ├── billing/
+│   │   ├── portal/
+│   │   ├── deal_health/
+│   │   ├── reporting/
+│   │   └── audit/
+│   │
+│   └── common/
+│       ├── enums.py
+│       ├── pagination.py
+│       ├── responses.py
+│       └── utils.py
+│
+├── alembic/
+│   ├── versions/
+│   ├── env.py
+│   └── script.py.mako
+│
+├── tests/
+│   ├── unit/
+│   ├── integration/
+│   └── api/
+│
+├── scripts/
+│   ├── seed.py
+│   ├── reset_db.py
+│   └── generate_demo_data.py
+│
+├── .env
+├── .env.example
+├── .gitignore
+├── alembic.ini
+├── pyproject.toml
+├── requirements.txt
+├── Dockerfile
+└── README.md
+
+
+======================================================================
+2. app/main.py
+======================================================================
+
+Purpose:
+FastAPI application entry point.
+
+Contains:
+- FastAPI app creation.
+- Application startup/shutdown configuration.
+- API router registration.
+- Global exception-handler registration.
+- Health-check endpoint if desired.
+- CORS configuration.
+- Basic middleware registration.
+
+Must NOT contain:
+- Quotation business logic.
+- Discount calculations.
+- Approval routing.
+- Warehouse allocation.
+- Billing calculations.
+
+======================================================================
+3. app/core/
+======================================================================
+
+Cross-cutting backend infrastructure used by all modules.
+
+----------------------------------------------------------------------
+core/config.py
+----------------------------------------------------------------------
+Purpose:
+Central application configuration.
+
+Contains:
+- Environment variable loading.
+- Supabase URL/key configuration.
+- Database URL.
+- JWT-related configuration.
+- CORS settings.
+- Application environment.
+- Other non-business configuration.
+
+Business rules must NOT be stored here.
+
+----------------------------------------------------------------------
+core/database.py
+----------------------------------------------------------------------
+Purpose:
+SQLAlchemy database infrastructure.
+
+Contains:
+- SQLAlchemy engine.
+- Session factory.
+- Base/declarative configuration.
+- FastAPI database-session dependency.
+- Transaction/session helpers where required.
+
+Uses:
+- Supabase PostgreSQL through SQLAlchemy.
+
+----------------------------------------------------------------------
+core/security.py
+----------------------------------------------------------------------
+Purpose:
+Authentication verification utilities.
+
+Contains:
+- Supabase JWT verification.
+- Authenticated user extraction.
+- Token-related security helpers.
+
+Important:
+Supabase Auth owns credentials/authentication.
+FastAPI verifies the authenticated identity and handles application
+authorization.
+
+Do NOT implement a second password-authentication system here.
+
+----------------------------------------------------------------------
+core/dependencies.py
+----------------------------------------------------------------------
+Purpose:
+Reusable FastAPI dependencies.
+
+Contains:
+- get_db()
+- get_current_user()
+- role-based authorization dependencies.
+- Customer portal authorization dependency.
+- Common resource-access checks where appropriate.
+
+Example concepts:
+- require_roles(...)
+- require_internal_user
+- require_customer_portal_user
+- require_admin
+- require_sales_manager
+- require_finance_operations
+
+Authorization must be enforced server-side.
+
+----------------------------------------------------------------------
+core/exceptions.py
+----------------------------------------------------------------------
+Purpose:
+Application-specific exception classes.
+
+Examples:
+- ResourceNotFoundError
+- UnauthorizedError
+- ForbiddenError
+- InvalidStateTransitionError
+- BusinessRuleViolationError
+- InsufficientInventoryError
+- ApprovalRequiredError
+- BillingError
+
+----------------------------------------------------------------------
+core/exception_handlers.py
+----------------------------------------------------------------------
+Purpose:
+Convert application exceptions into consistent FastAPI HTTP responses.
+
+Contains:
+- Exception-to-status-code mapping.
+- Consistent error response formatting.
+
+----------------------------------------------------------------------
+core/logging.py
+----------------------------------------------------------------------
+Purpose:
+Application logging configuration.
+
+Contains:
+- Logging setup.
+- Structured/request logging helpers if used.
+- Error logging configuration.
+
+======================================================================
+4. app/api/
+======================================================================
+
+Central API assembly layer.
+
+----------------------------------------------------------------------
+api/router.py
+----------------------------------------------------------------------
+Purpose:
+Register all module routers under /api/v1.
+
+Example groups:
+- auth
+- users
+- customers
+- catalog
+- pricing
+- discounts
+- approvals
+- quotations
+- recommendations
+- fulfillment
+- subscriptions
+- billing
+- portal
+- deal health
+- reporting
+- audit
+
+This file should assemble routers, not implement business logic.
+
+======================================================================
+5. app/models/
+======================================================================
+
+Purpose:
+SQLAlchemy 2.x persistence models corresponding to the FINAL 29-table schema.
+
+Every finalized database table gets one model file.
+
+----------------------------------------------------------------------
+Identity / Customer models
+----------------------------------------------------------------------
+user.py                  -> users
+customer.py              -> customers
+customer_tier.py         -> customer_tiers
+
+----------------------------------------------------------------------
+Catalog / Pricing models
+----------------------------------------------------------------------
+product_category.py      -> product_categories
+product.py               -> products
+product_variant.py       -> product_variants
+price_list.py            -> price_lists
+price_list_item.py       -> price_list_items
+discount_rule.py         -> discount_rules
+
+----------------------------------------------------------------------
+Approval models
+----------------------------------------------------------------------
+approval_policy.py       -> approval_policies
+approval_instance.py     -> approval_instances
+approval_step.py         -> approval_steps
+
+----------------------------------------------------------------------
+Sales models
+----------------------------------------------------------------------
+quotation.py             -> quotations
+quotation_line.py        -> quotation_lines
+order.py                 -> orders
+
+----------------------------------------------------------------------
+Recommendation model
+----------------------------------------------------------------------
+recommendation_rule.py   -> recommendation_rules
+
+----------------------------------------------------------------------
+Fulfillment models
+----------------------------------------------------------------------
+warehouse.py             -> warehouses
+inventory.py             -> inventory
+fulfillment_allocation.py -> fulfillment_allocations
+backorder.py             -> backorders
+
+----------------------------------------------------------------------
+Subscription / Billing models
+----------------------------------------------------------------------
+subscription_plan.py     -> subscription_plans
+subscription.py          -> subscriptions
+billing_schedule.py      -> billing_schedules
+invoice.py               -> invoices
+payment.py               -> payments
+
+----------------------------------------------------------------------
+Negotiation models
+----------------------------------------------------------------------
+negotiation_request.py   -> negotiation_requests
+negotiation_comment.py   -> negotiation_comments
+
+----------------------------------------------------------------------
+Monitoring / Audit models
+----------------------------------------------------------------------
+deal_alert.py            -> deal_alerts
+audit_log.py             -> audit_logs
+
+----------------------------------------------------------------------
+models/__init__.py
+----------------------------------------------------------------------
+Purpose:
+Import/register all SQLAlchemy models so metadata and Alembic can discover
+the complete schema.
+
+No business workflows should be implemented in model files.
+
+======================================================================
+6. app/modules/
+======================================================================
+
+This is the main business/application layer.
+
+Each module should normally contain:
+
+module/
+├── __init__.py
+├── router.py
+├── schemas.py
+├── service.py
+└── repository.py
+
+Where a module has unusually complex calculations, add:
+
+├── engine.py
+
+Where a module needs multiple services/repositories, split them into
+additional files only when complexity justifies it.
+
+Do not create dozens of tiny files before they are needed.
+
+======================================================================
+7. MODULE: auth/
+======================================================================
+
+auth/
+├── __init__.py
+├── router.py
+├── schemas.py
+└── service.py
+
+Purpose:
+Application-level authentication/profile integration around Supabase Auth.
+
+router.py:
+- GET /auth/me
+- POST /auth/refresh-profile
+
+schemas.py:
+- Current-user response schema.
+- Profile refresh request/response schemas if needed.
+
+service.py:
+- Resolve Supabase-authenticated identity to application user.
+- Synchronize application-level profile data.
+- Do not implement password authentication.
+
+======================================================================
+8. MODULE: users/
+======================================================================
+
+Purpose:
+Application user management and approver lookup.
+
+router.py:
+- GET /users
+- GET /users/{id}
+- PATCH /users/{id}
+- GET /users/approvers
+
+schemas.py:
+- User list/detail responses.
+- User update request.
+- Approver response.
+
+service.py:
+- User profile/activation operations.
+- Application-role operations.
+
+repository.py:
+- User queries and persistence.
+
+Authorization:
+- Admin/authorized internal roles only where appropriate.
+
+======================================================================
+9. MODULE: customers/
+======================================================================
+
+Purpose:
+B2B customer/account management.
+
+router.py:
+- GET /customers
+- POST /customers
+- GET /customers/{id}
+- PATCH /customers/{id}
+- DELETE /customers/{id}
+- GET /customers/{id}/quotations
+- GET /customers/{id}/orders
+- GET /customers/{id}/subscriptions
+
+schemas.py:
+- Customer create/update/detail/list schemas.
+
+service.py:
+- Customer lifecycle.
+- Customer-tier association.
+- Customer-related access checks where appropriate.
+
+repository.py:
+- Customer queries.
+
+======================================================================
+10. MODULE: catalog/
+======================================================================
+
+Purpose:
+Products, categories, and variants.
+
+Models used:
+- product_categories
+- products
+- product_variants
+
+router.py:
+- /product-categories/*
+- /products/*
+- /products/{id}/variants
+- /variants/*
+
+schemas.py:
+- Category schemas.
+- Product schemas.
+- Variant schemas.
+
+service.py:
+- Product/category/variant business operations.
+- Product activation/deactivation.
+
+repository.py:
+- Catalog queries.
+
+Do not place pricing resolution here; pricing belongs to the pricing module.
+
+======================================================================
+11. MODULE: pricing/
+======================================================================
+
+Purpose:
+Authoritative product-price resolution.
+
+router.py:
+- POST /pricing/resolve
+- Price-list CRUD endpoints may also be registered here.
+
+Models used:
+- price_lists
+- price_list_items
+- products
+- product_variants
+- customer_tiers
+
+schemas.py:
+- Price-list schemas.
+- Price-list item schemas.
+- Pricing resolution request/response schemas.
+
+service.py:
+- Resolve applicable price list.
+- Resolve customer-tier pricing.
+- Resolve currency-specific pricing.
+- Resolve variant extra price.
+
+engine.py:
+- Pricing calculation logic if the calculation becomes complex.
+
+repository.py:
+- Price-list queries.
+- Price-list-item queries.
+
+Critical rule:
+Never trust a frontend-supplied final selling price as authoritative.
+
+======================================================================
+12. MODULE: discounts/
+======================================================================
+
+Purpose:
+Discount governance and blended discount risk calculation.
+
+Models used:
+- discount_rules
+- customer_tiers
+- product_categories
+- quotation_lines
+- quotations
+
+router.py:
+- /discount-rules/*
+- GET /quotations/{id}/risk may be registered here or quotation module,
+  but calculation ownership belongs here.
+
+schemas.py:
+- Discount-rule schemas.
+- Risk response schemas.
+- Line-level risk details.
+
+service.py:
+- Determine applicable discount ceiling.
+- Evaluate quotation lines.
+- Update discount snapshots.
+- Determine discount excess.
+
+engine.py:
+- Blended discount risk formula.
+- Aggregation of line-level violations.
+- Approval-risk classification inputs.
+
+Important:
+The exact blended-risk formula was not specified by the requirements.
+It is an implementation decision and must be defined here, not in React.
+
+======================================================================
+13. MODULE: approvals/
+======================================================================
+
+Purpose:
+Approval configuration and actual approval workflow execution.
+
+Models used:
+- approval_policies
+- approval_instances
+- approval_steps
+
+router.py:
+- /approval-policies/*
+- GET /approvals
+- GET /approvals/pending
+- GET /approvals/{id}
+- POST /approvals/{id}/approve
+- POST /approvals/{id}/reject
+- POST /approvals/{id}/return-for-revision
+- GET /approvals/{id}/audit-log
+
+schemas.py:
+- Approval policy schemas.
+- Approval instance/step responses.
+- Approval decision request.
+
+service.py:
+- Select approval policy.
+- Create approval instance.
+- Create sequential approval steps.
+- Validate reviewer authorization.
+- Execute approve/reject/revision actions.
+- Advance Manager -> Finance sequence.
+- Complete approval workflow.
+- Trigger quotation state changes.
+
+repository.py:
+- Approval workflow queries.
+
+Critical invariants:
+- Manager precedes Finance.
+- Finance is not activated when not required.
+- Approval actions are sequential.
+- A quotation can have multiple approval_instances.
+- Approval actions generate audit records.
+
+======================================================================
+14. MODULE: quotations/
+======================================================================
+
+Purpose:
+Central commercial aggregate and quotation lifecycle.
+
+Models used:
+- quotations
+- quotation_lines
+
+router.py:
+- GET /quotations
+- POST /quotations
+- GET /quotations/{id}
+- PATCH /quotations/{id}
+- DELETE /quotations/{id}
+- GET /quotations/{id}/lines
+- POST /quotations/{id}/lines
+- PATCH /quotations/{id}/lines/{line_id}
+- DELETE /quotations/{id}/lines/{line_id}
+- POST /quotations/{id}/recalculate
+- POST /quotations/{id}/submit
+- POST /quotations/{id}/send
+- POST /quotations/{id}/return-for-revision
+- POST /quotations/{id}/confirm
+- GET /quotations/{id}/order
+- GET /quotations/{id}/approvals
+- GET /quotations/{id}/audit-log
+- GET /pipeline
+
+schemas.py:
+- Quotation create/update.
+- Quotation detail/list.
+- Quotation line create/update.
+- Recalculation response.
+- Submission/confirmation responses.
+
+service.py:
+- Create/update quotation.
+- Add/update/remove lines.
+- Invoke pricing logic.
+- Invoke discount/risk logic.
+- Recalculate totals/margin/risk.
+- Submit quotation.
+- Trigger automatic approval routing.
+- Send quotation.
+- Validate confirmation.
+- Create order through the order/fulfillment workflow.
+- Maintain quotation lifecycle state.
+
+engine.py:
+- Quotation financial calculations if needed:
+  subtotal, discounts, tax, total, cost, margin.
+
+repository.py:
+- Quotation and quotation-line queries.
+
+Critical rule:
+Quotation is the central sales aggregate.
+
+No order_lines model/table should be introduced.
+
+======================================================================
+15. MODULE: recommendations/
+======================================================================
+
+Purpose:
+Upsell/cross-sell suggestion behavior.
+
+Models used:
+- recommendation_rules
+- products
+
+router.py:
+- /recommendation-rules/*
+- GET /quotations/{id}/recommendations
+- POST /quotations/{id}/recommendations/{product_id}/add
+- POST /quotations/{id}/recommendations/{product_id}/dismiss
+
+schemas.py:
+- Recommendation rule schemas.
+- Recommendation response.
+- Add/dismiss response.
+
+service.py:
+- Find eligible recommendations.
+- Filter by minimum margin.
+- Calculate margin delta.
+- Rank suggestions.
+- Add recommendation through normal quotation logic.
+- Handle dismissal context.
+
+engine.py:
+- Deterministic ranking using:
+  priority
+  co-purchase score
+  promotion state
+  recommendation type
+
+Advanced ML recommendation infrastructure is out of scope.
+
+======================================================================
+16. MODULE: fulfillment/
+======================================================================
+
+Purpose:
+Warehouses, inventory, warehouse splitting, fulfillment, and backorders.
+
+Models used:
+- warehouses
+- inventory
+- fulfillment_allocations
+- backorders
+
+router.py:
+Warehouse endpoints:
+- /warehouses/*
+
+Inventory endpoints:
+- /inventory/*
+- /warehouses/{warehouse_id}/inventory
+
+Fulfillment endpoints:
+- GET /orders/{id}/fulfillment
+- POST /orders/{id}/fulfillment/suggest
+- POST /orders/{id}/fulfillment/accept
+- GET /orders/{id}/fulfillment/allocations
+- PATCH /orders/{id}/fulfillment/allocations/{allocation_id}
+- POST /orders/{id}/fulfillment/override
+- POST /orders/{id}/fulfillment/complete
+
+Backorder endpoints:
+- /backorders/*
+- /orders/{id}/backorders
+
+schemas.py:
+- Warehouse schemas.
+- Inventory schemas.
+- Allocation schemas.
+- Fulfillment response.
+- Backorder schemas.
+
+service.py:
+- Warehouse management.
+- Inventory availability.
+- Reservation/update operations.
+- Fulfillment allocation.
+- Manual override.
+- Backorder creation/update.
+- Backorder consolidation.
+
+engine.py:
+- Automatic warehouse split algorithm.
+- Shipment count/cost estimation.
+- Shipping-cost weighting.
+- Available-stock calculations.
+
+Critical rule:
+Warehouse allocation must use actual inventory and backend business logic.
+The exact optimization algorithm is an implementation decision.
+
+======================================================================
+17. MODULE: subscriptions/
+======================================================================
+
+Purpose:
+Recurring plans and subscription lifecycle.
+
+Models used:
+- subscription_plans
+- subscriptions
+
+router.py:
+- /subscription-plans/*
+- GET /subscriptions
+- GET /subscriptions/{id}
+- POST /subscriptions/{id}/modify
+- POST /subscriptions/{id}/cancel
+- POST /subscriptions/{id}/pause
+- GET /subscriptions/{id}/billing-schedule
+- POST /subscriptions/{id}/proration/preview
+- POST /subscriptions/{id}/proration/apply
+- POST /subscriptions/{id}/credit-note
+
+schemas.py:
+- Plan create/update/detail.
+- Subscription detail.
+- Modification request.
+- Cancellation request.
+- Proration preview/apply schemas.
+
+service.py:
+- Subscription creation from recurring quotation lines.
+- Subscription modification.
+- Subscription cancellation.
+- Subscription state management.
+- Trigger billing adjustments.
+
+engine.py:
+- Proration calculation.
+- Cancellation/refund policy evaluation.
+
+Critical rule:
+Exact proration formula is an implementation decision because requirements
+do not prescribe a formula.
+
+======================================================================
+18. MODULE: billing/
+======================================================================
+
+Purpose:
+Hybrid billing, billing schedules, invoices, payments, credit notes.
+
+Models used:
+- billing_schedules
+- invoices
+- payments
+
+router.py:
+Orders/billing:
+- GET /orders/{id}/billing
+- POST /orders/{id}/billing/generate
+
+Billing schedules:
+- /billing-schedules/*
+
+Invoices:
+- /invoices/*
+- /invoices/{id}/payments
+- /invoices/{id}/credit-notes
+
+Payments:
+- /payments/*
+
+schemas.py:
+- Billing state.
+- Billing schedule schemas.
+- Invoice schemas.
+- Payment schemas.
+- Credit-note schemas.
+
+service.py:
+- Generate one-time invoice.
+- Generate recurring billing schedule.
+- Generate recurring invoice.
+- Issue/cancel invoices.
+- Record payments.
+- Update invoice paid amount/status.
+- Generate credit notes.
+- Handle payment refunds where supported.
+
+engine.py:
+- Hybrid billing calculation.
+- Invoice status calculation.
+- Billing schedule generation.
+- Billing/proration adjustment calculations where required.
+
+Critical invoice rule:
+paid_amount = 0 -> ISSUED
+0 < paid_amount < total_amount -> PARTIALLY_PAID
+paid_amount >= total_amount -> PAID
+
+Do not logically permit overpayment unless explicitly added as a future rule.
+
+======================================================================
+19. MODULE: portal/
+======================================================================
+
+Purpose:
+Separate restricted customer-facing quotation portal and negotiation.
+
+Models used:
+- quotations
+- quotation_lines
+- negotiation_requests
+- negotiation_comments
+
+router.py:
+Portal quotation endpoints:
+- GET /portal/quotations
+- GET /portal/quotations/{id}
+- GET /portal/quotations/{id}/status
+- GET /portal/quotations/{id}/lines
+
+Negotiation endpoints:
+- GET /portal/quotations/{id}/negotiations
+- POST /portal/quotations/{id}/negotiations
+- GET /portal/quotations/{id}/comments
+- POST /portal/quotations/{id}/comments
+- POST /portal/quotations/{id}/lines/{line_id}/comments
+- POST /portal/quotations/{id}/confirm
+
+schemas.py:
+- Customer-visible quotation schemas.
+- Negotiation request schemas.
+- Customer comment schemas.
+- Portal confirmation schemas.
+
+service.py:
+- Restrict quotation access to authenticated customer's customer_id.
+- Hide internal-only information.
+- Process negotiation requests.
+- Apply/record permitted changes.
+- Recalculate quotation.
+- Trigger automatic re-approval.
+- Process customer confirmation.
+
+Critical rule:
+Portal authorization must be enforced server-side.
+Customer must never be able to access another customer's quotation.
+
+The portal must remain a genuinely separate/restricted API surface.
+
+======================================================================
+20. MODULE: deal_health/
+======================================================================
+
+Purpose:
+Deal health, stalled deals, discount anomalies, delivery slippage, alerts.
+
+Models used:
+- deal_alerts
+- quotations
+- orders
+- fulfillment_allocations
+- audit/workflow data as needed for calculations
+
+router.py:
+Deal health:
+- GET /deal-health
+- GET /deal-health/summary
+- GET /deal-health/stalled
+- GET /deal-health/anomalies
+- GET /deal-health/delivery-slippage
+
+Deal alerts:
+- GET /deal-alerts
+- GET /deal-alerts/{id}
+- POST /deal-alerts/{id}/acknowledge
+- POST /deal-alerts/{id}/resolve
+- POST /deal-alerts/{id}/action
+
+schemas.py:
+- Deal health KPI schemas.
+- Alert schemas.
+- Alert action schemas.
+
+service.py:
+- Derive current deal health.
+- Create/update alerts.
+- Alert acknowledgement/resolution.
+- Trigger configured nudge/escalation actions.
+
+engine.py:
+- Stalled-deal detection.
+- Discount anomaly detection.
+- Delivery slippage detection.
+
+Important:
+No deal_health database table exists.
+Deal health is derived from existing transactional state and deal_alerts.
+
+Exact anomaly/slippage formulas are implementation decisions.
+
+======================================================================
+21. MODULE: reporting/
+======================================================================
+
+Purpose:
+Read-only reporting and dashboard aggregations.
+
+Models queried:
+- quotations
+- quotation_lines
+- orders
+- products
+- product_categories
+- users
+- customers
+- approvals
+- invoices
+- payments
+- fulfillment data
+- other relevant transactional tables
+
+router.py:
+- GET /reports/summary
+- GET /reports/sales-performance
+- GET /reports/quotations
+- GET /reports/orders
+- GET /reports/products
+- GET /reports/discounts
+- GET /reports/approvals
+- GET /reports/export/pdf
+- GET /reports/export/xls
+
+schemas.py:
+- Report filter schema.
+- KPI schemas.
+- Sales-performance response.
+- Product/discount/approval report responses.
+- Export request/response metadata if required.
+
+service.py:
+- Validate report filters.
+- Coordinate report queries.
+- Produce report datasets.
+- Apply common period/rep/team/status/product/category filters.
+
+repository.py:
+- Optimized aggregation queries.
+- Reporting-specific SQLAlchemy queries.
+
+exporters.py:
+- PDF generation.
+- XLS generation.
+
+Critical rule:
+No reports/report_definitions database table is required.
+Reports are query/aggregation outputs.
+
+======================================================================
+22. MODULE: audit/
+======================================================================
+
+Purpose:
+Central audit-trail generation and retrieval.
+
+Model used:
+- audit_logs
+
+router.py:
+- GET /audit-logs
+- GET /audit-logs/{id}
+- Resource-specific audit routes may delegate here:
+  - /quotations/{id}/audit-log
+  - /orders/{id}/audit-log
+  - /approvals/{id}/audit-log
+
+schemas.py:
+- Audit log response/filter schemas.
+
+service.py:
+- Create audit entries.
+- Retrieve audit history.
+- Build old_values/new_values snapshots.
+- Record user, timestamp, action, reason, entity.
+
+repository.py:
+- Audit queries.
+
+Important:
+Frontend must NOT create arbitrary audit records.
+Business operations should call the audit service automatically.
+
+======================================================================
+23. app/common/
+======================================================================
+
+Purpose:
+Small reusable non-domain utilities.
+
+----------------------------------------------------------------------
+common/enums.py
+----------------------------------------------------------------------
+Contains shared stable enum definitions when they are reused across
+modules.
+
+Examples:
+- UserRole
+- QuotationStatus
+- ApprovalStatus
+- ApproverRole
+- InvoiceStatus
+- InvoiceType
+- PaymentStatus
+- SubscriptionStatus
+- etc.
+
+If an enum is tightly coupled to one domain, it may instead live with
+that domain.
+
+----------------------------------------------------------------------
+common/pagination.py
+----------------------------------------------------------------------
+Contains:
+- Pagination request/response helpers.
+- Shared pagination calculations.
+
+----------------------------------------------------------------------
+common/responses.py
+----------------------------------------------------------------------
+Contains:
+- Shared response envelope types if the project uses them.
+- Common API response structures.
+
+----------------------------------------------------------------------
+common/utils.py
+----------------------------------------------------------------------
+Only genuinely generic utilities.
+
+Do NOT turn utils.py into a dumping ground for business logic.
+
+======================================================================
+24. ALEMBIC
+======================================================================
+
+alembic/
+├── versions/
+├── env.py
+└── script.py.mako
+
+Purpose:
+Database schema migrations.
+
+env.py:
+- Connect Alembic to SQLAlchemy metadata.
+- Import application models.
+
+versions/:
+- Migration files.
+- Initial 29-table schema migration.
+- Later schema changes.
+
+Rule:
+All schema changes should be represented through Alembic migrations.
+
+Do not manually modify production schema without a migration.
+
+======================================================================
+25. TEST STRUCTURE
+======================================================================
+
+tests/
+├── unit/
+│   ├── test_pricing.py
+│   ├── test_discount_engine.py
+│   ├── test_approval_engine.py
+│   ├── test_quotation_calculation.py
+│   ├── test_recommendations.py
+│   ├── test_fulfillment_engine.py
+│   ├── test_backorders.py
+│   ├── test_proration.py
+│   ├── test_billing.py
+│   ├── test_deal_health.py
+│   └── test_negotiation_reapproval.py
+│
+├── integration/
+│   ├── test_quotation_workflow.py
+│   ├── test_approval_workflow.py
+│   ├── test_fulfillment_workflow.py
+│   ├── test_hybrid_billing.py
+│   ├── test_customer_negotiation.py
+│   └── test_payment_invoice.py
+│
+└── api/
+    ├── test_auth_api.py
+    ├── test_quotation_api.py
+    ├── test_approval_api.py
+    ├── test_fulfillment_api.py
+    ├── test_billing_api.py
+    ├── test_portal_api.py
+    └── test_reporting_api.py
+
+Testing priority:
+P0 business logic first.
+
+Highest priority:
+1. Discount governance.
+2. Blended risk calculation.
+3. Automatic approval routing.
+4. Approval state transitions.
+5. Warehouse splitting.
+6. Backorder handling.
+7. Subscription proration.
+8. Hybrid billing.
+9. Payment/invoice status.
+10. Customer negotiation re-approval.
+
+======================================================================
+26. scripts/
+======================================================================
+
+scripts/
+├── seed.py
+├── reset_db.py
+└── generate_demo_data.py
+
+seed.py:
+- Create required customer tiers.
+- Create categories/products.
+- Create pricing.
+- Create discount rules.
+- Create approval policies.
+- Create warehouses/inventory.
+- Create subscription plans.
+- Create recommendation rules.
+- Create users/customer portal users.
+- Create demo quotations/orders where appropriate.
+
+Seed data must support the Quick Test Flow and at least two end-to-end
+demo scenarios.
+
+reset_db.py:
+- Development-only database reset helper.
+- Must never be used accidentally against production.
+
+generate_demo_data.py:
+- Optional helper for deterministic demo scenarios.
+
+======================================================================
+27. ROOT CONFIGURATION FILES
+======================================================================
+
+.env
+-----
+Local environment variables.
+Never commit secrets.
+
+.env.example
+------------
+Names/placeholders for all required environment variables.
+
+requirements.txt
+----------------
+Pinned/controlled Python dependencies for:
+- FastAPI
+- Uvicorn
+- Pydantic
+- SQLAlchemy
+- Alembic
+- PostgreSQL driver
+- Supabase integration/JWT verification dependencies
+- Pytest
+- PDF/XLS export dependencies
+
+pyproject.toml
+--------------
+Project metadata and tool configuration.
+
+Can contain:
+- Python version.
+- Ruff/formatter configuration if used.
+- Pytest configuration.
+- Packaging configuration.
+
+alembic.ini
+-----------
+Alembic configuration.
+
+Dockerfile
+----------
+Optional/recommended backend container definition for consistent local and
+deployment execution.
+
+README.md
+---------
+Backend setup and developer instructions.
+
+Must document:
+- Environment setup.
+- Running FastAPI.
+- Running migrations.
+- Seeding data.
+- Running tests.
+- API base path.
+- Local development commands.
+
+======================================================================
+28. REQUEST FLOW
+======================================================================
+
+Recommended request flow:
+
+HTTP Request
+    |
+    v
+FastAPI Router
+    |
+    v
+Authentication / Authorization Dependency
+    |
+    v
+Pydantic Request Schema
+    |
+    v
+Service
+    |
+    +------> Domain Engine
+    |
+    +------> Repository
+    |            |
+    |            v
+    |        SQLAlchemy Models
+    |            |
+    |            v
+    |        PostgreSQL
+    |
+    +------> Audit Service
+    |
+    v
+Pydantic Response Schema
+    |
+    v
+HTTP Response
+
+For business operations, the service layer coordinates the transaction.
+
+Example:
+POST /quotations/{id}/submit
+    -> auth dependency
+    -> quotation service
+    -> recalculate pricing/margin/risk
+    -> discount engine
+    -> approval policy selection
+    -> approval service
+    -> create approval_instance
+    -> create approval_steps
+    -> audit service
+    -> commit transaction
+    -> response
+
+======================================================================
+29. TRANSACTION BOUNDARY RULE
+======================================================================
+
+Business operations that modify multiple related records should execute as
+one database transaction whenever consistency requires it.
+
+Examples:
+
+Quotation line update:
+- update quotation line
+- recalculate quotation
+- update quotation totals/risk/margin
+- audit change
+- commit
+
+Approval:
+- update approval step
+- update approval instance
+- update quotation state
+- create audit log
+- commit
+
+Fulfillment acceptance:
+- validate current inventory
+- reserve/update inventory
+- create/update allocations
+- create backorder if needed
+- update order state
+- audit override/decision where applicable
+- commit
+
+Negotiation:
+- record request
+- apply permitted commercial changes
+- recalculate quote
+- determine approval
+- create new approval instance if required
+- update quotation state
+- audit
+- commit
+
+Billing/payment:
+- create/update invoice
+- record payment
+- update paid amount
+- update invoice status
+- update billing state
+- audit where applicable
+- commit
+
+======================================================================
+30. WHAT SHOULD NOT BE CREATED
+======================================================================
+
+Do NOT add the following unless a later explicit project decision requires
+them:
+
+- Microservices.
+- Separate authentication service.
+- Redis.
+- Kafka.
+- Celery.
+- Kubernetes.
+- GraphQL.
+- order_lines table/model.
+- deal_health table/model.
+- reports/report_definition table/model.
+- currencies table.
+- companies table.
+- shipping_methods table.
+- refund_records table.
+
+These exclusions preserve the finalized hackathon architecture and schema.
+
+======================================================================
+31. IMPORTANT DOMAIN OWNERSHIP
+======================================================================
+
+Pricing:
+    pricing/
+
+Discount/risk:
+    discounts/
+
+Approval:
+    approvals/
+
+Quotation lifecycle:
+    quotations/
+
+Upsell/cross-sell:
+    recommendations/
+
+Warehouse/inventory/backorders:
+    fulfillment/
+
+Recurring subscriptions:
+    subscriptions/
+
+Invoices/payments/hybrid billing:
+    billing/
+
+Customer-facing negotiation:
+    portal/
+
+Deal health/anomalies:
+    deal_health/
+
+Reporting:
+    reporting/
+
+Audit:
+    audit/
+
+Authentication/authorization:
+    core/ + auth/ + users/
+
+Persistence:
+    models/ + repositories
+
+======================================================================
+32. IMPLEMENTATION ORDER USING THIS STRUCTURE
+======================================================================
+
+Recommended coding sequence:
+
+PHASE 1 — Infrastructure
+- core/config.py
+- core/database.py
+- core/security.py
+- core/dependencies.py
+- app/main.py
+- api/router.py
+
+PHASE 2 — Models + Migration
+- Implement all 29 SQLAlchemy models.
+- Configure relationships/constraints.
+- Create Alembic initial migration.
+- Verify database schema.
+
+PHASE 3 — Identity / Configuration
+- auth
+- users
+- customers
+- catalog
+- pricing
+- discounts
+- approvals configuration
+
+PHASE 4 — Core Sales Workflow
+- quotations
+- quotation lines
+- quotation calculation
+- discount risk
+- approval execution
+
+PHASE 5 — Fulfillment
+- warehouses
+- inventory
+- fulfillment allocation
+- backorders
+
+PHASE 6 — Billing
+- subscriptions
+- billing schedules
+- invoices
+- payments
+- hybrid billing
+
+PHASE 7 — Customer Workflow
+- portal
+- negotiations
+- automatic re-approval
+
+PHASE 8 — Supporting Features
+- recommendations
+- deal health
+- reporting
+- audit retrieval/export
+
+PHASE 9 — Seed Data + End-to-End Tests
+- seed.py
+- Quick Test Flow
+- at least two complete demo flows
+- API/integration tests
+
+======================================================================
+33. FINAL STRUCTURAL PRINCIPLES
+======================================================================
+
+1. Modular monolith, not microservices.
+
+2. Routes are thin.
+   Business decisions belong in services/engines.
+
+3. Business calculations are backend-authoritative.
+
+4. SQLAlchemy models represent the finalized 29-table schema.
+
+5. Repositories handle persistence/query concerns.
+
+6. Services coordinate business workflows.
+
+7. Engines contain complex reusable business calculations.
+
+8. Customer portal logic is isolated under portal/.
+
+9. Audit logging is centralized and invoked by business operations.
+
+10. Reporting is read/aggregation focused and does not create report tables.
+
+11. Critical workflows should be independently unit-testable without React.
+
+12. Multi-record business operations should use transaction boundaries.
+
+13. Avoid premature abstraction.
+    Add files/classes only when complexity justifies them.
+
+14. Do not introduce new tables/modules that conflict with the finalized
+    schema or requirements without explicitly identifying the conflict.
+
+15. Every backend module should be traceable to:
+    - a requirement/domain area,
+    - one or more finalized database entities,
+    - and one or more API endpoint groups.
+
+======================================================================
+FINAL RECOMMENDATION
+======================================================================
+
+Use this structure as the baseline backend skeleton.
+
+The most important separation is:
+
+    ROUTER
+       ↓
+    SERVICE
+       ↓
+    ENGINE / BUSINESS RULES
+       ↓
+    REPOSITORY
+       ↓
+    SQLALCHEMY MODEL
+       ↓
+    POSTGRESQL
+
+with:
+
+    CORE = authentication, authorization, DB, config, errors
+    AUDIT = cross-cutting audit generation
+    REALTIME = Supabase Realtime triggered by persisted state changes
+
+This keeps DealFlow360 simple enough for a 24-hour hackathon while still
+matching the finalized modular-monolith architecture and the quotation ->
+approval -> fulfillment -> billing -> negotiation -> reporting workflow.

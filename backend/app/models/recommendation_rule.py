@@ -1,0 +1,1 @@
+"""RecommendationRule SQLAlchemy model."""

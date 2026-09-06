@@ -8,6 +8,8 @@ from app.modules.catalog.router import router as catalog_router
 from app.modules.customers.router import router as customers_router
 from app.modules.discounts.router import router as discounts_router
 from app.modules.pricing.router import router as pricing_router
+from app.modules.quotations.order_router import order_router
+from app.modules.quotations.router import pipeline_router
 from app.modules.quotations.router import router as quotations_router
 from app.modules.users.router import router as users_router
 
@@ -20,4 +22,7 @@ api_router.include_router(pricing_router)
 api_router.include_router(discounts_router)
 api_router.include_router(approvals_router)
 api_router.include_router(quotations_router)
+api_router.include_router(pipeline_router)
+api_router.include_router(order_router)
+
 

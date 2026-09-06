@@ -9,16 +9,24 @@ from typing import List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
-from app.common.enums import ApprovalStatus, ApproverRole, QuotationStatus
+from app.common.enums import (
+    ApprovalStatus,
+    ApproverRole,
+    OrderStatus,
+    QuotationStatus,
+    UserRole,
+)
 from app.core.exceptions import DealFlowException, ResourceNotFoundError
 from app.models.approval_instance import ApprovalInstance
 from app.models.approval_step import ApprovalStep
 from app.models.customer import Customer
+from app.models.order import Order
 from app.models.product import Product
 from app.models.product_variant import ProductVariant
 from app.models.quotation import Quotation
 from app.models.quotation_line import QuotationLine
 from app.models.user import User
+from app.modules.audit.service import audit_service
 from app.modules.discounts.engine import discount_engine
 from app.modules.pricing.engine import pricing_engine
 from app.modules.pricing.repository import pricing_repository
@@ -26,12 +34,18 @@ from app.modules.quotations.engine import quotation_engine
 from app.modules.quotations.repository import quotation_repository
 from app.modules.quotations.schemas import (
     LineRiskDetail,
+    OrderResponse,
+    OrderUpdateRequest,
+    PipelineCardResponse,
+    PipelineResponse,
+    PipelineStageResponse,
     QuotationCreateRequest,
     QuotationLineCreateRequest,
     QuotationLineUpdateRequest,
     QuotationRiskResponse,
     QuotationUpdateRequest,
 )
+
 
 
 class QuotationService:
@@ -98,10 +112,31 @@ class QuotationService:
             current_approval_level=None,
         )
 
-        return quotation_repository.create_quotation(db, quotation)
+        created_quote = quotation_repository.create_quotation(db, quotation)
+
+        audit_service.log_event(
+            db=db,
+            entity_type="QUOTATION",
+            entity_id=created_quote.id,
+            action="CREATE",
+            user_id=current_user.id if current_user else None,
+            old_values=None,
+            new_values={
+                "quotation_number": created_quote.quotation_number,
+                "customer_id": str(created_quote.customer_id),
+                "status": created_quote.status.value,
+            },
+            reason=f"Created draft quotation {created_quote.quotation_number}",
+        )
+        db.commit()
+        return created_quote
 
     def update_quotation(
-        self, db: Session, quotation_id: uuid.UUID, request: QuotationUpdateRequest
+        self,
+        db: Session,
+        quotation_id: uuid.UUID,
+        request: QuotationUpdateRequest,
+        current_user: Optional[User] = None,
     ) -> Quotation:
         """Update quotation metadata."""
         quote = self.get_quotation_by_id(db, quotation_id)
@@ -114,13 +149,65 @@ class QuotationService:
                 status_code=400,
             )
 
+        old_valid_until = str(quote.valid_until) if quote.valid_until else None
         if request.valid_until is not None:
             quote.valid_until = request.valid_until
 
+        quote.last_activity_at = datetime.datetime.now(datetime.timezone.utc)
         db.add(quote)
+
+        audit_service.log_event(
+            db=db,
+            entity_type="QUOTATION",
+            entity_id=quote.id,
+            action="UPDATE",
+            user_id=current_user.id if current_user else None,
+            old_values={"valid_until": old_valid_until},
+            new_values={
+                "valid_until": str(quote.valid_until) if quote.valid_until else None
+            },
+            reason="Updated quotation metadata",
+        )
+
         db.commit()
         db.refresh(quote)
         return quote
+
+    def delete_quotation(
+        self,
+        db: Session,
+        quotation_id: uuid.UUID,
+        current_user: Optional[User] = None,
+    ) -> None:
+        """Delete/deactivate quotation where allowed (DRAFT only)."""
+        quote = self.get_quotation_by_id(db, quotation_id)
+        if quote.status != QuotationStatus.DRAFT:
+            raise DealFlowException(
+                f"Cannot delete quotation in state '{quote.status.value}'. Only DRAFT quotations can be deleted.",
+                status_code=400,
+            )
+
+        audit_service.log_event(
+            db=db,
+            entity_type="QUOTATION",
+            entity_id=quote.id,
+            action="DELETE",
+            user_id=current_user.id if current_user else None,
+            old_values={
+                "quotation_number": quote.quotation_number,
+                "status": quote.status.value,
+            },
+            reason=f"Deleted draft quotation {quote.quotation_number}",
+        )
+        quotation_repository.delete_quotation(db, quote)
+
+    def get_lines(
+        self, db: Session, quotation_id: uuid.UUID
+    ) -> List[QuotationLine]:
+        """Fetch all lines belonging to a quotation."""
+        self.get_quotation_by_id(db, quotation_id)  # verifies existence
+        return quotation_repository.get_lines(db, quotation_id)
+
 
     # --- Line Mutations ---
 
@@ -227,6 +314,23 @@ class QuotationService:
 
         # Recalculate quotation with newly added line
         self._recalculate_quotation_internal(db, quote)
+
+        audit_service.log_event(
+            db=db,
+            entity_type="QUOTATION",
+            entity_id=quote.id,
+            action="ADD_LINE",
+            user_id=current_user.id if current_user else None,
+            old_values=None,
+            new_values={
+                "line_id": str(line.id),
+                "product_id": str(line.product_id),
+                "quantity": str(line.quantity),
+                "discount_percent": str(line.discount_percent),
+            },
+            reason=f"Added product line {product.sku} to quotation {quote.quotation_number}",
+        )
+        db.commit()
         return quote
 
     def update_line(
@@ -253,6 +357,12 @@ class QuotationService:
         if not line:
             raise ResourceNotFoundError("Quotation line not found")
 
+        old_values = {
+            "quantity": str(line.quantity),
+            "unit_price": str(line.unit_price),
+            "discount_percent": str(line.discount_percent),
+        }
+
         if request.quantity is not None:
             line.quantity = Decimal(str(request.quantity))
         if request.unit_price is not None:
@@ -265,6 +375,23 @@ class QuotationService:
             line.description = request.description
 
         self._recalculate_quotation_internal(db, quote)
+
+        audit_service.log_event(
+            db=db,
+            entity_type="QUOTATION",
+            entity_id=quote.id,
+            action="UPDATE_LINE",
+            user_id=current_user.id if current_user else None,
+            old_values=old_values,
+            new_values={
+                "line_id": str(line.id),
+                "quantity": str(line.quantity),
+                "unit_price": str(line.unit_price),
+                "discount_percent": str(line.discount_percent),
+            },
+            reason=f"Updated line on quotation {quote.quotation_number}",
+        )
+        db.commit()
         return quote
 
     def delete_line(
@@ -289,9 +416,28 @@ class QuotationService:
         if not line:
             raise ResourceNotFoundError("Quotation line not found")
 
+        old_values = {
+            "line_id": str(line.id),
+            "product_id": str(line.product_id),
+            "quantity": str(line.quantity),
+        }
+
         quotation_repository.delete_line(db, line)
         self._recalculate_quotation_internal(db, quote)
+
+        audit_service.log_event(
+            db=db,
+            entity_type="QUOTATION",
+            entity_id=quote.id,
+            action="DELETE_LINE",
+            user_id=current_user.id if current_user else None,
+            old_values=old_values,
+            new_values=None,
+            reason=f"Deleted line from quotation {quote.quotation_number}",
+        )
+        db.commit()
         return quote
+
 
     # --- Core Recalculation & Discount Governance Integration ---
 
@@ -482,6 +628,8 @@ class QuotationService:
         # Recalculate first: Server is authoritative, never trust stale frontend state
         self._recalculate_quotation_internal(db, quote)
 
+        old_status = quote.status.value
+
         if quote.approval_required:
             quote.status = QuotationStatus.PENDING_APPROVAL
 
@@ -515,15 +663,345 @@ class QuotationService:
                     status=ApprovalStatus.PENDING,
                 )
                 db.add(step2)
+
+            audit_service.log_event(
+                db=db,
+                entity_type="APPROVAL_INSTANCE",
+                entity_id=instance.id,
+                action="CREATE",
+                user_id=current_user.id if current_user else None,
+                old_values=None,
+                new_values={
+                    "quotation_id": str(quote.id),
+                    "risk_score": str(quote.risk_score),
+                    "required_level": quote.current_approval_level,
+                },
+                reason=f"Generated approval workflow with risk score {quote.risk_score}",
+            )
         else:
             # Approval not required: eligible to progress
             quote.status = QuotationStatus.APPROVED
 
         quote.last_activity_at = datetime.datetime.now(datetime.timezone.utc)
         db.add(quote)
+
+        audit_service.log_event(
+            db=db,
+            entity_type="QUOTATION",
+            entity_id=quote.id,
+            action="SUBMIT",
+            user_id=current_user.id if current_user else None,
+            old_values={"status": old_status},
+            new_values={"status": quote.status.value},
+            reason=f"Submitted quotation {quote.quotation_number}",
+        )
+
         db.commit()
         db.refresh(quote)
         return quote
 
+    def send_quotation(
+        self, db: Session, quotation_id: uuid.UUID, current_user: User
+    ) -> Quotation:
+        """Mark quotation as sent to customer."""
+        quote = self.get_quotation_by_id(db, quotation_id)
+        if quote.status not in (QuotationStatus.APPROVED, QuotationStatus.DRAFT):
+            raise DealFlowException(
+                f"Quotation cannot be sent from state '{quote.status.value}'",
+                status_code=400,
+            )
+        now = datetime.datetime.now(datetime.timezone.utc)
+        old_status = quote.status.value
+        quote.status = QuotationStatus.SENT
+        quote.sent_at = now
+        quote.last_activity_at = now
+
+        audit_service.log_event(
+            db=db,
+            entity_type="QUOTATION",
+            entity_id=quote.id,
+            action="SEND",
+            user_id=current_user.id if current_user else None,
+            old_values={"status": old_status},
+            new_values={"status": quote.status.value, "sent_at": now.isoformat()},
+            reason=f"Sent quotation {quote.quotation_number} to customer",
+        )
+        db.add(quote)
+        db.commit()
+        db.refresh(quote)
+        return quote
+
+    def return_for_revision(
+        self,
+        db: Session,
+        quotation_id: uuid.UUID,
+        current_user: User,
+        reason: Optional[str] = None,
+    ) -> Quotation:
+        """Return quotation to revision state."""
+        quote = self.get_quotation_by_id(db, quotation_id)
+        if quote.status in (QuotationStatus.CONFIRMED, QuotationStatus.REVISION_REQUIRED):
+            raise DealFlowException(
+                f"Quotation in state '{quote.status.value}' cannot be returned for revision",
+                status_code=400,
+            )
+        now = datetime.datetime.now(datetime.timezone.utc)
+        old_status = quote.status.value
+        quote.status = QuotationStatus.REVISION_REQUIRED
+        quote.last_activity_at = now
+
+        audit_service.log_event(
+            db=db,
+            entity_type="QUOTATION",
+            entity_id=quote.id,
+            action="RETURN_FOR_REVISION",
+            user_id=current_user.id if current_user else None,
+            old_values={"status": old_status},
+            new_values={"status": quote.status.value},
+            reason=reason or "Quotation returned for revision",
+        )
+        db.add(quote)
+        db.commit()
+        db.refresh(quote)
+        return quote
+
+    def confirm_quotation(
+        self, db: Session, quotation_id: uuid.UUID, current_user: User
+    ) -> Tuple[Quotation, Order]:
+        """
+        Confirm quotation and create corresponding Order.
+        Must verify:
+        - Quotation is in confirmable state (APPROVED or SENT)
+        - If approval was required, at least one approval instance is APPROVED
+        - Prevents duplicate order creation (at most one order per quotation)
+        - Quotation has lines
+        - Updates quotation status to CONFIRMED
+        - Atomically creates Order
+        - Writes audit logs
+        """
+        quote = self.get_quotation_by_id(db, quotation_id)
+
+        # Check existing order / duplicate confirmation
+        existing_order = quotation_repository.get_order_by_quotation_id(db, quotation_id)
+        if existing_order or quote.status == QuotationStatus.CONFIRMED:
+            raise DealFlowException(
+                "Quotation has already been confirmed and an order already exists",
+                status_code=400,
+            )
+
+        if quote.status not in (QuotationStatus.APPROVED, QuotationStatus.SENT):
+            raise DealFlowException(
+                f"Quotation cannot be confirmed from status '{quote.status.value}'. Must be APPROVED or SENT.",
+                status_code=400,
+            )
+
+        if not quote.lines:
+            raise DealFlowException(
+                "Cannot confirm a quotation with no product lines",
+                status_code=400,
+            )
+
+        if quote.approval_required:
+            # Verify approval instance is approved
+            instances = quotation_repository.get_quotation_approval_instances(db, quote.id)
+            has_approved_instance = any(i.status == ApprovalStatus.APPROVED for i in instances)
+            if not has_approved_instance:
+                raise DealFlowException(
+                    "Quotation requires approval before confirmation, but no approved workflow was found",
+                    status_code=400,
+                )
+
+        now = datetime.datetime.now(datetime.timezone.utc)
+        unique_suffix = uuid.uuid4().hex[:6].upper()
+        order_number = f"SO-{now.strftime('%Y%m%d')}-{unique_suffix}"
+
+        order = Order(
+            order_number=order_number,
+            quotation_id=quote.id,
+            customer_id=quote.customer_id,
+            status=OrderStatus.CONFIRMED,
+            total_amount=quote.total_amount,
+            confirmed_at=now,
+        )
+        quotation_repository.create_order(db, order)
+
+        old_status = quote.status.value
+        quote.status = QuotationStatus.CONFIRMED
+        quote.last_activity_at = now
+        db.add(quote)
+
+        audit_service.log_event(
+            db=db,
+            entity_type="QUOTATION",
+            entity_id=quote.id,
+            action="CONFIRM",
+            user_id=current_user.id if current_user else None,
+            old_values={"status": old_status},
+            new_values={
+                "status": QuotationStatus.CONFIRMED.value,
+                "order_number": order_number,
+            },
+            reason=f"Confirmed quotation and generated Order {order_number}",
+        )
+
+        audit_service.log_event(
+            db=db,
+            entity_type="ORDER",
+            entity_id=order.id,
+            action="CREATE",
+            user_id=current_user.id if current_user else None,
+            old_values=None,
+            new_values={
+                "order_number": order.order_number,
+                "quotation_id": str(quote.id),
+                "customer_id": str(quote.customer_id),
+                "status": order.status.value,
+                "total_amount": str(order.total_amount),
+            },
+            reason=f"Created order {order_number} from confirmed quotation {quote.quotation_number}",
+        )
+
+        db.commit()
+        db.refresh(quote)
+        db.refresh(order)
+        return quote, order
+
+    def get_order_for_quotation(
+        self, db: Session, quotation_id: uuid.UUID
+    ) -> Order:
+        """Fetch order generated from a quotation or raise 404."""
+        self.get_quotation_by_id(db, quotation_id)
+        order = quotation_repository.get_order_by_quotation_id(db, quotation_id)
+        if not order:
+            raise ResourceNotFoundError("No order found for this quotation")
+        return order
+
+    def get_quotation_approvals(
+        self, db: Session, quotation_id: uuid.UUID
+    ):
+        """Fetch approval history and workflows for quotation."""
+        self.get_quotation_by_id(db, quotation_id)
+        return quotation_repository.get_quotation_approval_instances(db, quotation_id)
+
+    def get_pipeline(self, db: Session) -> PipelineResponse:
+        """Return Kanban pipeline stage grouping of quotations."""
+        quotations = quotation_repository.get_all_quotations_for_pipeline(db)
+        all_stages = [
+            QuotationStatus.DRAFT.value,
+            QuotationStatus.PENDING_APPROVAL.value,
+            QuotationStatus.APPROVED.value,
+            QuotationStatus.SENT.value,
+            QuotationStatus.UNDER_NEGOTIATION.value,
+            QuotationStatus.CONFIRMED.value,
+            QuotationStatus.REVISION_REQUIRED.value,
+            QuotationStatus.REJECTED.value,
+        ]
+
+        stage_map = {stage: [] for stage in all_stages}
+        total_deals = len(quotations)
+        total_pipeline_value = Decimal("0.00")
+
+        for q in quotations:
+            total_pipeline_value += q.total_amount
+            status_str = q.status.value if hasattr(q.status, "value") else str(q.status)
+            if status_str not in stage_map:
+                stage_map[status_str] = []
+            stage_map[status_str].append(
+                PipelineCardResponse(
+                    quotation_id=q.id,
+                    quotation_number=q.quotation_number,
+                    customer_id=q.customer_id,
+                    customer_name=q.customer.name if q.customer else None,
+                    sales_rep_id=q.sales_rep_id,
+                    sales_rep_name=q.sales_rep.name if q.sales_rep else None,
+                    status=status_str,
+                    total_amount=q.total_amount,
+                    margin_percent=q.margin_percent,
+                    risk_score=q.risk_score,
+                    created_at=q.created_at,
+                    last_activity_at=q.last_activity_at,
+                )
+            )
+
+        stage_responses = []
+        for stage in all_stages:
+            cards = stage_map[stage]
+            stage_val = sum((c.total_amount for c in cards), Decimal("0.00"))
+            stage_responses.append(
+                PipelineStageResponse(
+                    stage=stage,
+                    count=len(cards),
+                    total_value=stage_val,
+                    cards=cards,
+                )
+            )
+
+        return PipelineResponse(
+            stages=stage_responses,
+            total_deals=total_deals,
+            total_pipeline_value=total_pipeline_value,
+        )
+
+    # --- Orders Management ---
+
+    def list_orders(
+        self,
+        db: Session,
+        customer_id: Optional[uuid.UUID] = None,
+        status: Optional[str] = None,
+        skip: int = 0,
+        limit: int = 100,
+    ) -> List[Order]:
+        """List confirmed sales orders."""
+        return quotation_repository.list_orders(
+            db=db,
+            customer_id=customer_id,
+            status=status,
+            skip=skip,
+            limit=limit,
+        )
+
+    def get_order_by_id(self, db: Session, order_id: uuid.UUID) -> Order:
+        """Get order by ID or raise 404."""
+        order = quotation_repository.get_order_by_id(db, order_id)
+        if not order:
+            raise ResourceNotFoundError("Order not found")
+        return order
+
+    def update_order(
+        self,
+        db: Session,
+        order_id: uuid.UUID,
+        request: OrderUpdateRequest,
+        current_user: User,
+    ) -> Order:
+        """Update permitted order fields/state."""
+        order = self.get_order_by_id(db, order_id)
+        old_status = order.status.value
+        if request.status is not None:
+            try:
+                target_status = OrderStatus(request.status)
+            except ValueError:
+                raise DealFlowException(f"Invalid order status: {request.status}", status_code=400)
+            order.status = target_status
+
+        order.updated_at = datetime.datetime.now(datetime.timezone.utc)
+        db.add(order)
+
+        audit_service.log_event(
+            db=db,
+            entity_type="ORDER",
+            entity_id=order.id,
+            action="UPDATE",
+            user_id=current_user.id,
+            old_values={"status": old_status},
+            new_values={"status": order.status.value},
+            reason=f"Updated order {order.order_number} status",
+        )
+        db.commit()
+        db.refresh(order)
+        return order
+
 
 quotation_service = QuotationService()
+

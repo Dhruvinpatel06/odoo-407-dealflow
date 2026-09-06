@@ -641,4 +641,27 @@ def downgrade() -> None:
     op.drop_table('product_categories')
     op.drop_table('customer_tiers')
     op.drop_table('approval_policies')
+
+    # Drop PostgreSQL enum types created by initial_schema
+    for enum_name in [
+        'payment_status',
+        'invoice_status',
+        'invoice_type',
+        'billing_schedule_status',
+        'subscription_status',
+        'fulfillment_allocation_status',
+        'backorder_status',
+        'approver_role',
+        'order_status',
+        'negotiation_request_status',
+        'deal_alert_status',
+        'deal_alert_severity',
+        'deal_alert_type',
+        'approval_status',
+        'quotation_status',
+        'recommendation_type',
+        'proration_method',
+        'billing_interval',
+    ]:
+        sa.Enum(name=enum_name).drop(op.get_bind(), checkfirst=True)
     # ### end Alembic commands ###

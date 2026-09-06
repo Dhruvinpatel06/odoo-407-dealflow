@@ -166,3 +166,76 @@ class QuotationRecalculateResponse(BaseModel):
     quotation: QuotationDetailResponse
     risk: QuotationRiskResponse
     recalculated_at: datetime
+
+
+class OrderResponse(BaseModel):
+    """Response schema representing a confirmed sales order."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    order_number: str
+    quotation_id: uuid.UUID
+    customer_id: uuid.UUID
+    customer_name: Optional[str] = None
+    status: str
+    total_amount: Decimal
+    confirmed_at: datetime
+    created_at: datetime
+    updated_at: datetime
+
+
+class OrderUpdateRequest(BaseModel):
+    """Request schema for updating allowed order properties."""
+
+    status: Optional[str] = None
+
+
+class QuotationConfirmationResponse(BaseModel):
+    """Response returned upon successful quotation confirmation and order creation."""
+
+    quotation: QuotationDetailResponse
+    order: OrderResponse
+    confirmed_at: datetime
+
+
+class PipelineCardResponse(BaseModel):
+    """Card summary representing a quotation in the sales pipeline Kanban."""
+
+    quotation_id: uuid.UUID
+    quotation_number: str
+    customer_id: uuid.UUID
+    customer_name: Optional[str] = None
+    sales_rep_id: uuid.UUID
+    sales_rep_name: Optional[str] = None
+    status: str
+    total_amount: Decimal
+    margin_percent: Decimal
+    risk_score: Decimal
+    created_at: datetime
+    last_activity_at: datetime
+
+
+class PipelineStageResponse(BaseModel):
+    """Stage aggregation and cards within the sales pipeline."""
+
+    stage: str
+    count: int
+    total_value: Decimal
+    cards: List[PipelineCardResponse] = Field(default_factory=list)
+
+
+class PipelineResponse(BaseModel):
+    """Overall sales pipeline Kanban representation."""
+
+    stages: List[PipelineStageResponse]
+    total_deals: int
+    total_pipeline_value: Decimal
+
+
+class QuotationDeleteResponse(BaseModel):
+    """Response schema upon quotation deletion."""
+
+    message: str
+    quotation_id: uuid.UUID
+

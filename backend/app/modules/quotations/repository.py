@@ -9,12 +9,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.common.enums import QuotationStatus
+from app.models.approval_instance import ApprovalInstance
 from app.models.approval_policy import ApprovalPolicy
 from app.models.customer import Customer
 from app.models.discount_rule import DiscountRule
+from app.models.order import Order
 from app.models.product import Product
 from app.models.quotation import Quotation
 from app.models.quotation_line import QuotationLine
+
 
 
 class QuotationRepository:
@@ -137,5 +140,109 @@ class QuotationRepository:
         db.refresh(quotation)
         return quotation
 
+    def delete_quotation(self, db: Session, quotation: Quotation) -> None:
+        """Delete a quotation entity and commit."""
+        db.delete(quotation)
+        db.commit()
+
+
+    def get_lines(
+        self, db: Session, quotation_id: uuid.UUID
+    ) -> List[QuotationLine]:
+        """Fetch all lines belonging to a quotation."""
+        stmt = (
+            select(QuotationLine)
+            .options(
+                joinedload(QuotationLine.product).joinedload(Product.category),
+                joinedload(QuotationLine.variant),
+            )
+            .where(QuotationLine.quotation_id == quotation_id)
+            .order_by(QuotationLine.created_at.asc())
+        )
+        return list(db.execute(stmt).scalars().all())
+
+    def get_order_by_quotation_id(
+        self, db: Session, quotation_id: uuid.UUID
+    ) -> Optional[Order]:
+        """Fetch order created from a quotation."""
+        stmt = (
+            select(Order)
+            .options(joinedload(Order.customer), joinedload(Order.quotation))
+            .where(Order.quotation_id == quotation_id)
+        )
+        return db.execute(stmt).scalar_one_or_none()
+
+    def get_order_by_id(
+        self, db: Session, order_id: uuid.UUID
+    ) -> Optional[Order]:
+        """Fetch order by primary key UUID."""
+        stmt = (
+            select(Order)
+            .options(joinedload(Order.customer), joinedload(Order.quotation))
+            .where(Order.id == order_id)
+        )
+        return db.execute(stmt).scalar_one_or_none()
+
+    def list_orders(
+        self,
+        db: Session,
+        customer_id: Optional[uuid.UUID] = None,
+        status: Optional[str] = None,
+        skip: int = 0,
+        limit: int = 100,
+    ) -> List[Order]:
+        """List confirmed sales orders with optional filters."""
+        stmt = (
+            select(Order)
+            .options(joinedload(Order.customer), joinedload(Order.quotation))
+            .order_by(Order.confirmed_at.desc())
+        )
+        if customer_id is not None:
+            stmt = stmt.where(Order.customer_id == customer_id)
+        if status is not None:
+            stmt = stmt.where(Order.status == status)
+
+        stmt = stmt.offset(skip).limit(limit)
+        return list(db.execute(stmt).scalars().all())
+
+    def create_order(self, db: Session, order: Order) -> Order:
+        """Persist order."""
+        db.add(order)
+        db.flush()
+        return order
+
+    def save_order(self, db: Session, order: Order) -> Order:
+        """Commit order changes."""
+        db.add(order)
+        db.commit()
+        db.refresh(order)
+        return order
+
+    def get_quotation_approval_instances(
+        self, db: Session, quotation_id: uuid.UUID
+    ) -> List[ApprovalInstance]:
+        """Fetch all approval instances for a quotation with steps."""
+        stmt = (
+            select(ApprovalInstance)
+            .options(selectinload(ApprovalInstance.steps))
+            .where(ApprovalInstance.quotation_id == quotation_id)
+            .order_by(ApprovalInstance.created_at.desc())
+        )
+        return list(db.execute(stmt).scalars().all())
+
+
+    def get_all_quotations_for_pipeline(self, db: Session) -> List[Quotation]:
+        """Fetch active quotations with customer and sales rep for Kanban pipeline."""
+        stmt = (
+            select(Quotation)
+            .options(
+                joinedload(Quotation.customer),
+                joinedload(Quotation.sales_rep),
+            )
+            .order_by(Quotation.last_activity_at.desc())
+        )
+        return list(db.execute(stmt).unique().scalars().all())
+
 
 quotation_repository = QuotationRepository()
+

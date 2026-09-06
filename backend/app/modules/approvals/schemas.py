@@ -165,3 +165,60 @@ class ApprovalPolicyResponse(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime
+
+
+class ApprovalStepResponse(BaseModel):
+    """Response schema for an approval step within an approval instance."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    approval_instance_id: uuid.UUID
+    step_order: int
+    approver_role: str
+    approver_user_id: Optional[uuid.UUID] = None
+    status: str
+    decision_reason: Optional[str] = None
+    decided_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ApprovalInstanceResponse(BaseModel):
+    """Response schema for an approval instance including its sequential steps."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    quotation_id: uuid.UUID
+    quotation_number: Optional[str] = None
+    customer_name: Optional[str] = None
+    risk_score: Decimal
+    status: str
+    started_at: datetime
+    completed_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+    steps: list[ApprovalStepResponse] = Field(default_factory=list)
+
+
+class ApprovalDecisionRequest(BaseModel):
+    """Request payload when reviewing an approval step."""
+
+    reason: Optional[str] = Field(None, max_length=1000, description="Decision explanation/justification.")
+
+
+class PendingApprovalStepResponse(BaseModel):
+    """Actionable approval work item relevant to the current user."""
+
+    step_id: uuid.UUID
+    approval_instance_id: uuid.UUID
+    quotation_id: uuid.UUID
+    quotation_number: str
+    customer_name: Optional[str] = None
+    risk_score: Decimal
+    step_order: int
+    approver_role: str
+    status: str
+    started_at: datetime
+

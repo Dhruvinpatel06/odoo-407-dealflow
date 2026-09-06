@@ -2,28 +2,37 @@
 
 from __future__ import annotations
 
+import datetime
 import uuid
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
+from app.common.enums import ApprovalStatus, ApproverRole, QuotationStatus, UserRole
 from app.core.exceptions import (
     BusinessRuleViolationError,
     DealFlowException,
     ResourceNotFoundError,
 )
+from app.models.approval_instance import ApprovalInstance
 from app.models.approval_policy import ApprovalPolicy
+from app.models.approval_step import ApprovalStep
 from app.models.user import User
 from app.modules.approvals.repository import (
+    ApprovalExecutionRepository,
     ApprovalPolicyRepository,
+    approval_execution_repository,
     approval_policy_repository,
 )
 from app.modules.approvals.schemas import (
+    ApprovalDecisionRequest,
     ApprovalPolicyCreateRequest,
     ApprovalPolicyUpdateRequest,
+    PendingApprovalStepResponse,
 )
 from app.modules.audit.service import audit_service
+
 
 
 def _policy_to_audit_dict(policy: ApprovalPolicy) -> Dict[str, Any]:
@@ -352,3 +361,330 @@ class ApprovalPolicyService:
 
 
 approval_policy_service = ApprovalPolicyService()
+
+
+class ApprovalExecutionService:
+    """Coordinates business logic and workflows for approval instances and sequential steps."""
+
+    def __init__(
+        self,
+        repository: ApprovalExecutionRepository = approval_execution_repository,
+    ) -> None:
+        self.repository = repository
+
+    def list_instances(
+        self,
+        db: Session,
+        status: Optional[str] = None,
+        quotation_id: Optional[uuid.UUID] = None,
+        skip: int = 0,
+        limit: int = 100,
+    ) -> List[ApprovalInstance]:
+        """List approval workflow instances."""
+        return self.repository.list_instances(
+            db=db,
+            status=status,
+            quotation_id=quotation_id,
+            skip=skip,
+            limit=limit,
+        )
+
+    def get_instance(
+        self, db: Session, instance_id: uuid.UUID
+    ) -> ApprovalInstance:
+        """Fetch approval workflow instance with steps or raise 404."""
+        instance = self.repository.get_instance_by_id(db, instance_id)
+        if not instance:
+            raise ResourceNotFoundError(f"Approval instance '{instance_id}' not found")
+        return instance
+
+    def get_pending_approvals(
+        self, db: Session, current_user: User
+    ) -> List[PendingApprovalStepResponse]:
+        """
+        Return actionable pending approval steps for the current user.
+        A step is actionable if:
+        1. Step status is PENDING
+        2. All prior steps in the instance are APPROVED (sequential rule)
+        3. Current user has the approver role (or ADMIN)
+        """
+        pending_instances = self.repository.list_instances(
+            db=db, status=ApprovalStatus.PENDING.value, limit=500
+        )
+        actionable_steps: List[PendingApprovalStepResponse] = []
+
+        for inst in pending_instances:
+            # Steps are sorted by step_order
+            steps = sorted(inst.steps, key=lambda s: s.step_order)
+            for idx, step in enumerate(steps):
+                if step.status == ApprovalStatus.PENDING:
+                    # Check that all prior steps are APPROVED
+                    prior_approved = all(
+                        s.status == ApprovalStatus.APPROVED for s in steps[:idx]
+                    )
+                    if not prior_approved:
+                        break  # Cannot act on this step yet
+
+                    # Check user role eligibility
+                    is_eligible = (
+                        current_user.role == UserRole.ADMIN
+                        or (
+                            step.approver_role == ApproverRole.SALES_MANAGER
+                            and current_user.role == UserRole.SALES_MANAGER
+                        )
+                        or (
+                            step.approver_role == ApproverRole.FINANCE_OPERATIONS
+                            and current_user.role == UserRole.FINANCE_OPERATIONS
+                        )
+                    )
+                    if is_eligible:
+                        q = inst.quotation
+                        actionable_steps.append(
+                            PendingApprovalStepResponse(
+                                step_id=step.id,
+                                approval_instance_id=inst.id,
+                                quotation_id=inst.quotation_id,
+                                quotation_number=q.quotation_number if q else "",
+                                customer_name=q.customer.name if q and q.customer else None,
+                                risk_score=inst.risk_score,
+                                step_order=step.step_order,
+                                approver_role=step.approver_role.value if hasattr(step.approver_role, "value") else str(step.approver_role),
+                                status=step.status.value if hasattr(step.status, "value") else str(step.status),
+                                started_at=inst.started_at,
+                            )
+                        )
+                    break  # Only one step can be actionable per instance at a time
+
+        return actionable_steps
+
+    def _find_current_actionable_step(
+        self, instance: ApprovalInstance, current_user: User
+    ) -> ApprovalStep:
+        """Helper to find and validate the currently actionable step for the user."""
+        if instance.status != ApprovalStatus.PENDING:
+            raise BusinessRuleViolationError(
+                f"Approval workflow is already in '{instance.status.value}' state"
+            )
+
+        steps = sorted(instance.steps, key=lambda s: s.step_order)
+        actionable_step = None
+
+        for idx, step in enumerate(steps):
+            if step.status == ApprovalStatus.PENDING:
+                # Validate sequential: prior steps must be approved
+                prior_approved = all(
+                    s.status == ApprovalStatus.APPROVED for s in steps[:idx]
+                )
+                if not prior_approved:
+                    raise BusinessRuleViolationError(
+                        "Previous approval step must be approved first"
+                    )
+                actionable_step = step
+                break
+
+        if not actionable_step:
+            raise BusinessRuleViolationError("No pending approval steps found in this workflow")
+
+        # Validate authorization
+        is_eligible = (
+            current_user.role == UserRole.ADMIN
+            or (
+                actionable_step.approver_role == ApproverRole.SALES_MANAGER
+                and current_user.role == UserRole.SALES_MANAGER
+            )
+            or (
+                actionable_step.approver_role == ApproverRole.FINANCE_OPERATIONS
+                and current_user.role == UserRole.FINANCE_OPERATIONS
+            )
+        )
+        if not is_eligible:
+            raise DealFlowException(
+                f"User role '{current_user.role.value}' is not authorized to act on step requiring '{actionable_step.approver_role.value}'",
+                status_code=403,
+            )
+
+        return actionable_step
+
+    def approve_step(
+        self,
+        db: Session,
+        instance_id: uuid.UUID,
+        current_user: User,
+        request: ApprovalDecisionRequest,
+    ) -> ApprovalInstance:
+        """
+        Approve the current pending approval step in sequence.
+        If this is the final step, completes the instance and transitions quotation to APPROVED.
+        """
+        instance = self.get_instance(db, instance_id)
+        step = self._find_current_actionable_step(instance, current_user)
+        now = datetime.datetime.now(datetime.timezone.utc)
+
+        # Mark step approved
+        step.status = ApprovalStatus.APPROVED
+        step.approver_user_id = current_user.id
+        step.decided_at = now
+        step.decision_reason = request.reason
+
+        audit_service.log_event(
+            db=db,
+            entity_type="APPROVAL_STEP",
+            entity_id=step.id,
+            action="APPROVE",
+            user_id=current_user.id,
+            old_values={"status": ApprovalStatus.PENDING.value},
+            new_values={
+                "status": ApprovalStatus.APPROVED.value,
+                "step_order": step.step_order,
+                "approver_role": step.approver_role.value if hasattr(step.approver_role, "value") else str(step.approver_role),
+                "decision_reason": request.reason,
+            },
+            reason=f"Approved step {step.step_order} ({step.approver_role.value if hasattr(step.approver_role, 'value') else step.approver_role})",
+        )
+
+        # Check if more pending steps exist
+        steps = sorted(instance.steps, key=lambda s: s.step_order)
+        more_pending = any(s.status == ApprovalStatus.PENDING for s in steps)
+
+        if not more_pending:
+            # Complete workflow
+            instance.status = ApprovalStatus.APPROVED
+            instance.completed_at = now
+
+            if instance.quotation:
+                instance.quotation.status = QuotationStatus.APPROVED
+                instance.quotation.last_activity_at = now
+
+                audit_service.log_event(
+                    db=db,
+                    entity_type="QUOTATION",
+                    entity_id=instance.quotation.id,
+                    action="APPROVE",
+                    user_id=current_user.id,
+                    old_values={"status": QuotationStatus.PENDING_APPROVAL.value},
+                    new_values={"status": QuotationStatus.APPROVED.value},
+                    reason="All required approval steps completed successfully",
+                )
+
+            audit_service.log_event(
+                db=db,
+                entity_type="APPROVAL_INSTANCE",
+                entity_id=instance.id,
+                action="APPROVE",
+                user_id=current_user.id,
+                old_values={"status": ApprovalStatus.PENDING.value},
+                new_values={"status": ApprovalStatus.APPROVED.value},
+                reason="Completed all required approval steps",
+            )
+
+        db.commit()
+        db.refresh(instance)
+        return instance
+
+    def reject_step(
+        self,
+        db: Session,
+        instance_id: uuid.UUID,
+        current_user: User,
+        request: ApprovalDecisionRequest,
+    ) -> ApprovalInstance:
+        """
+        Reject the current pending step. Immediately terminates workflow and sets quotation to REJECTED.
+        """
+        instance = self.get_instance(db, instance_id)
+        step = self._find_current_actionable_step(instance, current_user)
+        now = datetime.datetime.now(datetime.timezone.utc)
+
+        step.status = ApprovalStatus.REJECTED
+        step.approver_user_id = current_user.id
+        step.decided_at = now
+        step.decision_reason = request.reason
+
+        instance.status = ApprovalStatus.REJECTED
+        instance.completed_at = now
+
+        if instance.quotation:
+            instance.quotation.status = QuotationStatus.REJECTED
+            instance.quotation.last_activity_at = now
+
+            audit_service.log_event(
+                db=db,
+                entity_type="QUOTATION",
+                entity_id=instance.quotation.id,
+                action="REJECT",
+                user_id=current_user.id,
+                old_values={"status": QuotationStatus.PENDING_APPROVAL.value},
+                new_values={"status": QuotationStatus.REJECTED.value},
+                reason=request.reason or "Quotation rejected during approval",
+            )
+
+        audit_service.log_event(
+            db=db,
+            entity_type="APPROVAL_INSTANCE",
+            entity_id=instance.id,
+            action="REJECT",
+            user_id=current_user.id,
+            old_values={"status": ApprovalStatus.PENDING.value},
+            new_values={"status": ApprovalStatus.REJECTED.value},
+            reason=request.reason or "Workflow rejected",
+        )
+
+        db.commit()
+        db.refresh(instance)
+        return instance
+
+    def return_step_for_revision(
+        self,
+        db: Session,
+        instance_id: uuid.UUID,
+        current_user: User,
+        request: ApprovalDecisionRequest,
+    ) -> ApprovalInstance:
+        """
+        Return quotation/workflow for revision. Sets quotation to REVISION_REQUIRED.
+        """
+        instance = self.get_instance(db, instance_id)
+        step = self._find_current_actionable_step(instance, current_user)
+        now = datetime.datetime.now(datetime.timezone.utc)
+
+        step.status = ApprovalStatus.REVISION_REQUIRED
+        step.approver_user_id = current_user.id
+        step.decided_at = now
+        step.decision_reason = request.reason
+
+        instance.status = ApprovalStatus.REVISION_REQUIRED
+        instance.completed_at = now
+
+        if instance.quotation:
+            instance.quotation.status = QuotationStatus.REVISION_REQUIRED
+            instance.quotation.last_activity_at = now
+
+            audit_service.log_event(
+                db=db,
+                entity_type="QUOTATION",
+                entity_id=instance.quotation.id,
+                action="RETURN_FOR_REVISION",
+                user_id=current_user.id,
+                old_values={"status": QuotationStatus.PENDING_APPROVAL.value},
+                new_values={"status": QuotationStatus.REVISION_REQUIRED.value},
+                reason=request.reason or "Quotation returned for revision by approver",
+            )
+
+        audit_service.log_event(
+            db=db,
+            entity_type="APPROVAL_INSTANCE",
+            entity_id=instance.id,
+            action="RETURN_FOR_REVISION",
+            user_id=current_user.id,
+            old_values={"status": ApprovalStatus.PENDING.value},
+            new_values={"status": ApprovalStatus.REVISION_REQUIRED.value},
+            reason=request.reason or "Workflow returned for revision",
+        )
+
+        db.commit()
+        db.refresh(instance)
+        return instance
+
+
+approval_execution_service = ApprovalExecutionService()
+

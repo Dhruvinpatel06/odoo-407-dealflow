@@ -12,9 +12,13 @@ from sqlalchemy.orm import Session
 from app.common.enums import QuotationStatus, UserRole
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, require_roles
-from app.models.user import User
+from app.modules.approvals.schemas import ApprovalInstanceResponse
 from app.modules.quotations.schemas import (
+    OrderResponse,
+    PipelineResponse,
+    QuotationConfirmationResponse,
     QuotationCreateRequest,
+    QuotationDeleteResponse,
     QuotationDetailResponse,
     QuotationLineCreateRequest,
     QuotationLineResponse,
@@ -25,6 +29,7 @@ from app.modules.quotations.schemas import (
     QuotationUpdateRequest,
 )
 from app.modules.quotations.service import quotation_service
+
 
 router = APIRouter(prefix="/quotations", tags=["Quotations"])
 
@@ -92,12 +97,39 @@ def update_quotation(
 ) -> QuotationDetailResponse:
     """Update allowed quotation metadata."""
     quote = quotation_service.update_quotation(
-        db=db, quotation_id=id, request=request
+        db=db, quotation_id=id, request=request, current_user=current_user
     )
     return _to_detail_response(quote)
 
 
+@router.delete("/{id}", response_model=QuotationDeleteResponse)
+def delete_quotation(
+    id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(INTERNAL_SALES_ROLES)),
+) -> QuotationDeleteResponse:
+    """Delete draft quotation where allowed."""
+    quotation_service.delete_quotation(
+        db=db, quotation_id=id, current_user=current_user
+    )
+    return QuotationDeleteResponse(
+        message="Quotation deleted successfully", quotation_id=id
+    )
+
+
+@router.get("/{id}/lines", response_model=List[QuotationLineResponse])
+def get_quotation_lines(
+    id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(INTERNAL_SALES_ROLES)),
+) -> List[QuotationLineResponse]:
+    """Retrieve all quotation lines for a quotation."""
+    lines = quotation_service.get_lines(db=db, quotation_id=id)
+    return [QuotationLineResponse.model_validate(l) for l in lines]
+
+
 # --- Quotation Lines ---
+
 
 
 @router.post("/{id}/lines", response_model=QuotationDetailResponse, status_code=status.HTTP_201_CREATED)
@@ -201,6 +233,141 @@ def submit_quotation(
         db=db, quotation_id=id, current_user=current_user
     )
     return _to_detail_response(quote)
+
+
+@router.post("/{id}/send", response_model=QuotationDetailResponse)
+def send_quotation(
+    id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(INTERNAL_SALES_ROLES)),
+) -> QuotationDetailResponse:
+    """Mark quotation as sent to customer."""
+    quote = quotation_service.send_quotation(
+        db=db, quotation_id=id, current_user=current_user
+    )
+    return _to_detail_response(quote)
+
+
+@router.post("/{id}/return-for-revision", response_model=QuotationDetailResponse)
+def return_quotation_for_revision(
+    id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(INTERNAL_SALES_ROLES)),
+) -> QuotationDetailResponse:
+    """Return quotation to revision state."""
+    quote = quotation_service.return_for_revision(
+        db=db, quotation_id=id, current_user=current_user
+    )
+    return _to_detail_response(quote)
+
+
+@router.post("/{id}/confirm", response_model=QuotationConfirmationResponse)
+def confirm_quotation(
+    id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(INTERNAL_SALES_ROLES)),
+) -> QuotationConfirmationResponse:
+    """Confirm quotation and generate corresponding confirmed sales order."""
+    quote, order = quotation_service.confirm_quotation(
+        db=db, quotation_id=id, current_user=current_user
+    )
+    return QuotationConfirmationResponse(
+        quotation=_to_detail_response(quote),
+        order=OrderResponse(
+            id=order.id,
+            order_number=order.order_number,
+            quotation_id=order.quotation_id,
+            customer_id=order.customer_id,
+            customer_name=quote.customer.name if quote.customer else None,
+            status=order.status.value,
+            total_amount=order.total_amount,
+            confirmed_at=order.confirmed_at,
+            created_at=order.created_at,
+            updated_at=order.updated_at,
+        ),
+        confirmed_at=order.confirmed_at,
+    )
+
+
+@router.get("/{id}/order", response_model=OrderResponse)
+def get_quotation_order(
+    id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(INTERNAL_SALES_ROLES)),
+) -> OrderResponse:
+    """Return order generated from the quotation."""
+    order = quotation_service.get_order_for_quotation(db=db, quotation_id=id)
+    quote = order.quotation
+    return OrderResponse(
+        id=order.id,
+        order_number=order.order_number,
+        quotation_id=order.quotation_id,
+        customer_id=order.customer_id,
+        customer_name=order.customer.name if order.customer else None,
+        status=order.status.value,
+        total_amount=order.total_amount,
+        confirmed_at=order.confirmed_at,
+        created_at=order.created_at,
+        updated_at=order.updated_at,
+    )
+
+
+@router.get("/{id}/approvals", response_model=List[ApprovalInstanceResponse])
+def get_quotation_approvals(
+    id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(INTERNAL_SALES_ROLES)),
+) -> List[ApprovalInstanceResponse]:
+    """Return approval history and current approval workflow for quotation."""
+    from app.modules.approvals.router import _to_instance_response
+
+    instances = quotation_service.get_quotation_approvals(db=db, quotation_id=id)
+    return [_to_instance_response(inst) for inst in instances]
+
+
+@router.get("/{id}/audit-log", response_model=List[dict])
+def get_quotation_audit_log(
+    id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(INTERNAL_SALES_ROLES)),
+) -> List[dict]:
+    """Return quotation-specific audit history."""
+    from app.models.audit_log import AuditLog
+
+    quotation_service.get_quotation_by_id(db=db, quotation_id=id)
+    logs = (
+        db.query(AuditLog)
+        .filter(AuditLog.entity_type == "QUOTATION", AuditLog.entity_id == id)
+        .order_by(AuditLog.created_at.desc())
+        .all()
+    )
+    return [
+        {
+            "id": log.id,
+            "entity_type": log.entity_type,
+            "entity_id": log.entity_id,
+            "action": log.action,
+            "user_id": log.user_id,
+            "old_values": log.old_values,
+            "new_values": log.new_values,
+            "reason": log.reason,
+            "created_at": log.created_at,
+        }
+        for log in logs
+    ]
+
+
+pipeline_router = APIRouter(prefix="/pipeline", tags=["Pipeline"])
+
+
+@pipeline_router.get("", response_model=PipelineResponse)
+def get_sales_pipeline(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(INTERNAL_SALES_ROLES)),
+) -> PipelineResponse:
+    """Return Kanban-style quotation/deal pipeline data."""
+    return quotation_service.get_pipeline(db=db)
+
 
 
 def _to_detail_response(quote) -> QuotationDetailResponse:

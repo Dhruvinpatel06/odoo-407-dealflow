@@ -100,3 +100,86 @@ class ApprovalPolicyRepository:
 
 
 approval_policy_repository = ApprovalPolicyRepository()
+
+
+class ApprovalExecutionRepository:
+    """Handles persistence operations for ApprovalInstance and ApprovalStep entities."""
+
+    def get_instance_by_id(
+        self, db: Session, instance_id: uuid.UUID
+    ) -> Optional[ApprovalInstance]:
+        """Fetch an ApprovalInstance by UUID with steps and quotation eagerly loaded."""
+        from sqlalchemy.orm import joinedload
+        from app.models.approval_instance import ApprovalInstance
+        from app.models.quotation import Quotation
+
+        return (
+            db.query(ApprovalInstance)
+            .options(
+                joinedload(ApprovalInstance.steps),
+                joinedload(ApprovalInstance.quotation).joinedload(Quotation.customer),
+            )
+            .filter(ApprovalInstance.id == instance_id)
+            .first()
+        )
+
+    def list_instances(
+        self,
+        db: Session,
+        status: Optional[str] = None,
+        quotation_id: Optional[uuid.UUID] = None,
+        skip: int = 0,
+        limit: int = 100,
+    ) -> List[ApprovalInstance]:
+        """List approval instances with optional status and quotation filters."""
+        from sqlalchemy.orm import joinedload
+        from app.models.approval_instance import ApprovalInstance
+        from app.models.quotation import Quotation
+
+        query = db.query(ApprovalInstance).options(
+            joinedload(ApprovalInstance.steps),
+            joinedload(ApprovalInstance.quotation).joinedload(Quotation.customer),
+        )
+        if status:
+            query = query.filter(ApprovalInstance.status == status)
+        if quotation_id:
+            query = query.filter(ApprovalInstance.quotation_id == quotation_id)
+
+        return (
+            query.order_by(ApprovalInstance.created_at.desc())
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
+
+    def get_step_by_id(
+        self, db: Session, step_id: uuid.UUID
+    ) -> Optional[ApprovalStep]:
+        """Fetch an ApprovalStep by UUID with parent instance eagerly loaded."""
+        from sqlalchemy.orm import joinedload
+        from app.models.approval_step import ApprovalStep
+
+        return (
+            db.query(ApprovalStep)
+            .options(joinedload(ApprovalStep.approval_instance))
+            .filter(ApprovalStep.id == step_id)
+            .first()
+        )
+
+    def save_step(self, db: Session, step: ApprovalStep) -> ApprovalStep:
+        """Add and flush step."""
+        db.add(step)
+        db.flush()
+        return step
+
+    def save_instance(
+        self, db: Session, instance: ApprovalInstance
+    ) -> ApprovalInstance:
+        """Add and flush instance."""
+        db.add(instance)
+        db.flush()
+        return instance
+
+
+approval_execution_repository = ApprovalExecutionRepository()
+

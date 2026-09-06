@@ -23,6 +23,7 @@ from app.modules.auth.schemas import (
     SignupRequest,
     TokenResponse,
 )
+from app.modules.customers.service import customer_service
 from app.modules.users.repository import user_repository
 
 
@@ -32,7 +33,8 @@ class AuthService:
     def signup(self, db: Session, request: SignupRequest) -> User:
         """
         Public customer signup workflow.
-        Always assigns role=CUSTOMER, active=True, and customer_id=None.
+        Always assigns role=CUSTOMER, active=True, and automatically creates
+        and links a corresponding Customer record.
         Rejects duplicate emails and hashes password with Argon2id.
         """
         cleaned_email = request.email.strip().lower()
@@ -41,15 +43,27 @@ class AuthService:
             raise DealFlowException("A user with this email already exists", status_code=400)
 
         password_hash = hash_password(request.password)
-        return user_repository.create_user(
-            db=db,
-            name=request.name,
-            email=cleaned_email,
-            password_hash=password_hash,
-            role=UserRole.CUSTOMER,
-            customer_id=None,
-            is_active=True,
-        )
+        try:
+            user = user_repository.create_user(
+                db=db,
+                name=request.name,
+                email=cleaned_email,
+                password_hash=password_hash,
+                role=UserRole.CUSTOMER,
+                customer_id=None,
+                is_active=True,
+                auto_commit=False,
+            )
+            customer_service.ensure_customer_for_user(
+                db=db,
+                user=user,
+            )
+            db.commit()
+            db.refresh(user)
+            return user
+        except Exception:
+            db.rollback()
+            raise
 
     def login(self, db: Session, request: LoginRequest) -> Tuple[TokenResponse, str]:
         """Authenticate user credentials, initiate session, and return access/refresh tokens."""

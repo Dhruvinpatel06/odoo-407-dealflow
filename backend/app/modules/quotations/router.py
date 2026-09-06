@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.common.enums import QuotationStatus, UserRole
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, require_roles
+from app.core.exceptions import ForbiddenError
 from app.modules.approvals.schemas import ApprovalInstanceResponse
 from app.modules.quotations.schemas import (
     OrderResponse,
@@ -40,6 +41,14 @@ INTERNAL_SALES_ROLES = [
     UserRole.ADMIN,
 ]
 
+ALL_QUOTATION_READ_ROLES = [
+    UserRole.SALES_REP,
+    UserRole.SALES_MANAGER,
+    UserRole.FINANCE_OPERATIONS,
+    UserRole.ADMIN,
+    UserRole.CUSTOMER,
+]
+
 
 @router.get("", response_model=List[QuotationResponse])
 def list_quotations(
@@ -49,9 +58,14 @@ def list_quotations(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=100),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(INTERNAL_SALES_ROLES)),
+    current_user: User = Depends(require_roles(ALL_QUOTATION_READ_ROLES)),
 ) -> List[QuotationResponse]:
-    """List quotations with optional filtering."""
+    """List quotations with optional filtering. Customers are strictly isolated to their own quotations."""
+    if current_user.role == UserRole.CUSTOMER:
+        if not current_user.customer_id:
+            return []
+        customer_id = current_user.customer_id
+
     return quotation_service.list_quotations(
         db=db,
         status=status,
@@ -81,10 +95,12 @@ def create_quotation(
 def get_quotation(
     id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(INTERNAL_SALES_ROLES)),
+    current_user: User = Depends(require_roles(ALL_QUOTATION_READ_ROLES)),
 ) -> QuotationDetailResponse:
     """Retrieve full quotation details including lines and latest calculated financial state."""
     quote = quotation_service.get_quotation_by_id(db=db, quotation_id=id)
+    if current_user.role == UserRole.CUSTOMER and quote.customer_id != current_user.customer_id:
+        raise ForbiddenError("You do not have permission to view this quotation")
     return _to_detail_response(quote)
 
 
@@ -265,9 +281,12 @@ def return_quotation_for_revision(
 def confirm_quotation(
     id: uuid.UUID,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_roles(INTERNAL_SALES_ROLES)),
+    current_user: User = Depends(require_roles(ALL_QUOTATION_READ_ROLES)),
 ) -> QuotationConfirmationResponse:
     """Confirm quotation and generate corresponding confirmed sales order."""
+    quote_check = quotation_service.get_quotation_by_id(db=db, quotation_id=id)
+    if current_user.role == UserRole.CUSTOMER and quote_check.customer_id != current_user.customer_id:
+        raise ForbiddenError("You do not have permission to confirm this quotation")
     quote, order = quotation_service.confirm_quotation(
         db=db, quotation_id=id, current_user=current_user
     )

@@ -10,6 +10,21 @@ export { userService, UserAdminError } from './userService';
 export { customerService } from './customerService';
 export { customerTierService } from './customerTierService';
 export { catalogService } from './catalogService';
+export { quotationService } from './quotationService';
+export { approvalService } from './approvalService';
+export { orderService } from './orderService';
+export { pipelineService } from './pipelineService';
+export { fulfillmentService } from './fulfillmentService';
+export { billingService } from './billingService';
+export { invoiceService } from './invoiceService';
+export { paymentService } from './paymentService';
+export { subscriptionService } from './subscriptionService';
+export { subscriptionPlanService } from './subscriptionPlanService';
+export { billingScheduleService } from './billingScheduleService';
+export { warehouseService } from './warehouseService';
+export { pricingService } from './pricingService';
+export { discountRuleService } from './discountRuleService';
+export { approvalPolicyService } from './approvalPolicyService';
 
 export const queryKeys = {
   auth: {
@@ -51,42 +66,95 @@ export const queryKeys = {
   },
   quotations: {
     all: ['quotations'] as const,
+    list: (params?: Record<string, any>) => ['quotations', 'list', params] as const,
     detail: (id: string) => ['quotations', id] as const,
     lines: (id: string) => ['quotations', id, 'lines'] as const,
     risk: (id: string) => ['quotations', id, 'risk'] as const,
     approvals: (id: string) => ['quotations', id, 'approvals'] as const,
-    recommendations: (id: string) => ['quotations', id, 'recommendations'] as const,
+    auditLog: (id: string) => ['quotations', id, 'audit-log'] as const,
   },
   approvals: {
     all: ['approvals'] as const,
+    list: (params?: Record<string, any>) => ['approvals', 'list', params] as const,
     pending: ['approvals', 'pending'] as const,
     detail: (id: string) => ['approvals', id] as const,
+    auditLog: (id: string) => ['approvals', id, 'audit-log'] as const,
+  },
+  orders: {
+    all: ['orders'] as const,
+    list: (params?: Record<string, any>) => ['orders', 'list', params] as const,
+    detail: (id: string) => ['orders', id] as const,
+    auditLog: (id: string) => ['orders', id, 'audit-log'] as const,
+  },
+  pipeline: {
+    data: ['pipeline'] as const,
   },
   fulfillment: {
     order: (orderId: string) => ['orders', orderId, 'fulfillment'] as const,
     allocations: (orderId: string) => ['orders', orderId, 'fulfillment', 'allocations'] as const,
-    backorders: ['backorders'] as const,
+    backorders: (orderId: string) => ['orders', orderId, 'backorders'] as const,
+  },
+  backorders: {
+    all: ['backorders'] as const,
+    list: (params?: Record<string, any>) => ['backorders', 'list', params] as const,
+    detail: (id: string) => ['backorders', id] as const,
   },
   billing: {
     order: (orderId: string) => ['orders', orderId, 'billing'] as const,
-    invoices: ['invoices'] as const,
-    subscriptions: ['subscriptions'] as const,
-    schedules: ['billing-schedules'] as const,
   },
-  portal: {
-    quotations: ['portal', 'quotations'] as const,
-    detail: (id: string) => ['portal', 'quotations', id] as const,
-    negotiations: (id: string) => ['portal', 'quotations', id, 'negotiations'] as const,
+  invoices: {
+    all: ['invoices'] as const,
+    list: (params?: Record<string, any>) => ['invoices', 'list', params] as const,
+    detail: (id: string) => ['invoices', id] as const,
+    payments: (id: string) => ['invoices', id, 'payments'] as const,
+    creditNotes: (id: string) => ['invoices', id, 'credit-notes'] as const,
   },
-  health: {
-    dashboard: ['deal-health'] as const,
-    alerts: ['deal-alerts'] as const,
+  payments: {
+    all: ['payments'] as const,
+    list: (params?: Record<string, any>) => ['payments', 'list', params] as const,
+    detail: (id: string) => ['payments', id] as const,
   },
-  reports: {
-    summary: ['reports', 'summary'] as const,
-    salesPerformance: (params: Record<string, any>) => ['reports', 'sales-performance', params] as const,
+  subscriptions: {
+    all: ['subscriptions'] as const,
+    list: (params?: Record<string, any>) => ['subscriptions', 'list', params] as const,
+    detail: (id: string) => ['subscriptions', id] as const,
   },
-  governance: {
-    config: ['governance', 'config'] as const,
-  }
+  subscriptionPlans: {
+    all: ['subscription-plans'] as const,
+    list: (params?: Record<string, any>) => ['subscription-plans', 'list', params] as const,
+    detail: (id: string) => ['subscription-plans', id] as const,
+  },
+  billingSchedules: {
+    all: ['billing-schedules'] as const,
+    list: (params?: Record<string, any>) => ['billing-schedules', 'list', params] as const,
+    detail: (id: string) => ['billing-schedules', id] as const,
+  },
+  warehouses: {
+    all: ['warehouses'] as const,
+    list: (params?: Record<string, any>) => ['warehouses', 'list', params] as const,
+    detail: (id: string) => ['warehouses', id] as const,
+    inventory: (id: string) => ['warehouses', id, 'inventory'] as const,
+  },
+  inventory: {
+    all: ['inventory'] as const,
+    list: (params?: Record<string, any>) => ['inventory', 'list', params] as const,
+    detail: (id: string) => ['inventory', id] as const,
+    product: (productId: string) => ['inventory', 'product', productId] as const,
+  },
+  priceLists: {
+    all: ['price-lists'] as const,
+    list: (params?: Record<string, any>) => ['price-lists', 'list', params] as const,
+    detail: (id: string) => ['price-lists', id] as const,
+    items: (id: string) => ['price-lists', id, 'items'] as const,
+  },
+  discountRules: {
+    all: ['discount-rules'] as const,
+    list: (params?: Record<string, any>) => ['discount-rules', 'list', params] as const,
+    detail: (id: string) => ['discount-rules', id] as const,
+  },
+  approvalPolicies: {
+    all: ['approval-policies'] as const,
+    list: (params?: Record<string, any>) => ['approval-policies', 'list', params] as const,
+    detail: (id: string) => ['approval-policies', id] as const,
+  },
 };

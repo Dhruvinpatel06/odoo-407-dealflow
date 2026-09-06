@@ -3,60 +3,73 @@ import {
   ShieldCheck, 
   Sliders, 
   Percent, 
-  Save, 
-  AlertTriangle
+  Save
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { AccessRestrictedView } from '../common/AccessRestrictedView';
 
+const DEFAULT_GOVERNANCE = {
+  managerCeiling: 15,
+  tierPlatinum: 25,
+  tierGold: 18,
+  tierSilver: 12,
+  tierBronze: 8,
+  catHardware: 15,
+  catSubscription: 25,
+  catServices: 20,
+  riskThresholdManager: 40,
+  minMarginFloor: 25,
+};
+
 export const ManagerGovernanceView: React.FC = () => {
-  const { showNotification, currentUser, governanceConfig, updateGovernanceConfig } = useApp();
+  const { showNotification, currentUser } = useApp();
 
   // Defense-in-depth RBAC check
   if (currentUser.role !== 'SALES_MANAGER' && currentUser.role !== 'ADMIN') {
     return (
       <AccessRestrictedView
-        requiredRole="Sales Manager (Marcus Vance) or Administrator"
+        requiredRole="Sales Manager or Administrator"
         featureName="Sales Manager Commercial Governance"
       />
     );
   }
 
   // Manager-accessible governance controls
-  const [managerCeiling, setManagerCeiling] = useState(governanceConfig.roleCeilings.managerCeiling);
-  const [tierPlatinum, setTierPlatinum] = useState(governanceConfig.tierDiscountCeilings.PLATINUM);
-  const [tierGold, setTierGold] = useState(governanceConfig.tierDiscountCeilings.GOLD);
-  const [tierSilver, setTierSilver] = useState(governanceConfig.tierDiscountCeilings.SILVER);
-  const [tierBronze, setTierBronze] = useState(governanceConfig.tierDiscountCeilings.BRONZE);
+  const [managerCeiling, setManagerCeiling] = useState(() => {
+    const saved = localStorage.getItem('dealflow_gov_mgr_ceiling');
+    return saved ? parseInt(saved) : DEFAULT_GOVERNANCE.managerCeiling;
+  });
+  const [tierPlatinum, setTierPlatinum] = useState(() => {
+    const saved = localStorage.getItem('dealflow_gov_tier_plat');
+    return saved ? parseInt(saved) : DEFAULT_GOVERNANCE.tierPlatinum;
+  });
+  const [tierGold, setTierGold] = useState(() => {
+    const saved = localStorage.getItem('dealflow_gov_tier_gold');
+    return saved ? parseInt(saved) : DEFAULT_GOVERNANCE.tierGold;
+  });
+  const [tierSilver, setTierSilver] = useState(() => {
+    const saved = localStorage.getItem('dealflow_gov_tier_silver');
+    return saved ? parseInt(saved) : DEFAULT_GOVERNANCE.tierSilver;
+  });
+  const [tierBronze, setTierBronze] = useState(() => {
+    const saved = localStorage.getItem('dealflow_gov_tier_bronze');
+    return saved ? parseInt(saved) : DEFAULT_GOVERNANCE.tierBronze;
+  });
 
-  const [catHardware, setCatHardware] = useState(governanceConfig.categoryDiscountCeilings.HARDWARE);
-  const [catSubscription, setCatSubscription] = useState(governanceConfig.categoryDiscountCeilings.SUBSCRIPTION);
-  const [catServices, setCatServices] = useState(governanceConfig.categoryDiscountCeilings.SERVICES);
+  const [catHardware, setCatHardware] = useState(DEFAULT_GOVERNANCE.catHardware);
+  const [catSubscription, setCatSubscription] = useState(DEFAULT_GOVERNANCE.catSubscription);
+  const [catServices, setCatServices] = useState(DEFAULT_GOVERNANCE.catServices);
 
-  const [riskThresholdManager, setRiskThresholdManager] = useState(governanceConfig.managerApprovalRiskThreshold);
-  const [minMarginFloor, setMinMarginFloor] = useState(governanceConfig.minCorporateMarginFloor);
+  const [riskThresholdManager, setRiskThresholdManager] = useState(DEFAULT_GOVERNANCE.riskThresholdManager);
+  const [minMarginFloor, setMinMarginFloor] = useState(DEFAULT_GOVERNANCE.minMarginFloor);
 
   const handleSavePolicy = (e: React.FormEvent) => {
     e.preventDefault();
-    updateGovernanceConfig({
-      roleCeilings: {
-        ...governanceConfig.roleCeilings,
-        managerCeiling
-      },
-      minCorporateMarginFloor: minMarginFloor,
-      tierDiscountCeilings: {
-        PLATINUM: tierPlatinum,
-        GOLD: tierGold,
-        SILVER: tierSilver,
-        BRONZE: tierBronze
-      },
-      categoryDiscountCeilings: {
-        HARDWARE: catHardware,
-        SUBSCRIPTION: catSubscription,
-        SERVICES: catServices
-      },
-      managerApprovalRiskThreshold: riskThresholdManager
-    });
+    localStorage.setItem('dealflow_gov_mgr_ceiling', String(managerCeiling));
+    localStorage.setItem('dealflow_gov_tier_plat', String(tierPlatinum));
+    localStorage.setItem('dealflow_gov_tier_gold', String(tierGold));
+    localStorage.setItem('dealflow_gov_tier_silver', String(tierSilver));
+    localStorage.setItem('dealflow_gov_tier_bronze', String(tierBronze));
     showNotification('Manager commercial governance parameters updated.', 'success');
   };
 

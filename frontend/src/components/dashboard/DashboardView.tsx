@@ -1,86 +1,105 @@
 import React from 'react';
 import { 
   TrendingUp, 
-  FileText, 
   CheckCircle2, 
   AlertTriangle, 
-  Activity, 
   DollarSign, 
   ArrowRight, 
   Plus, 
-  ShieldAlert,
-  Clock,
-  Sparkles,
-  Building2,
-  ChevronRight,
-  UserCheck,
-  Shield,
-  Layers,
-  Settings,
-  Check,
-  RotateCcw,
-  Target,
-  BarChart3,
-  CreditCard,
-  Percent
+  Sparkles, 
+  Building2, 
+  Check, 
+  RotateCcw, 
+  CreditCard, 
+  Percent,
+  Clock
 } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useApp } from '../../context/AppContext';
 import { StatusBadge } from '../common/StatusBadge';
 import { RiskBadge } from '../common/RiskBadge';
 import { getRoleMeta } from '../../utils/rbac';
+import { 
+  useQuotationsQuery, 
+  useApprovalsQuery, 
+  useCustomersQuery 
+} from '../../hooks/useBackendData';
+import { quotationService, approvalService } from '../../services/api';
+import { QuotationResponse } from '../../services/quotationService';
+import { ApprovalInstanceResponse } from '../../services/approvalService';
 
 export const DashboardView: React.FC = () => {
   const { 
-    quotations, 
-    approvals, 
-    dealAlerts, 
+    currentUser, 
     setCurrentPage, 
     setSelectedQuoteId, 
-    auditLogs,
-    currentUser,
-    createNewQuotation,
-    approveCurrentStep,
-    returnForRevision,
-    showNotification
+    showNotification 
   } = useApp();
 
+  const queryClient = useQueryClient();
   const role = currentUser.role;
   const roleMeta = getRoleMeta(role);
 
-  // Common calculations
-  const totalPipeline = quotations.reduce((acc, q) => acc + q.totalAmount, 0);
-  const pendingApprovals = approvals.filter(a => a.status === 'PENDING');
-  const highRiskQuotes = quotations.filter(q => q.riskStatus === 'HIGH_RISK');
-  const avgMargin = quotations.reduce((acc, q) => acc + q.blendedMarginPercent, 0) / (quotations.length || 1);
+  // Queries
+  const { data: quotations = [] } = useQuotationsQuery();
+  const { data: approvals = [] } = useApprovalsQuery();
+  const { data: customers = [] } = useCustomersQuery();
 
-  // Rep-specific calculations
-  const repQuotes = quotations.filter(q => q.salesRepName === currentUser.name || q.salesRepName === 'Sarah Chen');
-  const repPipeline = repQuotes.reduce((acc, q) => acc + q.totalAmount, 0);
-  const repQuota = 135000;
-  const repAttainment = Math.round((repPipeline / repQuota) * 100);
-  const repPendingApprovals = approvals.filter(a => {
-    const q = quotations.find(quote => quote.id === a.quotationId);
-    return a.status === 'PENDING' && (q?.salesRepName === currentUser.name || q?.salesRepName === 'Sarah Chen');
-  });
+  // Metrics
+  const totalPipeline = quotations.reduce((acc: number, q: QuotationResponse) => acc + Number(q.total_amount || 0), 0);
+  const pendingApprovals = approvals.filter((a: ApprovalInstanceResponse) => a.status === 'PENDING');
+  const highRiskQuotes = quotations.filter((q: QuotationResponse) => q.risk_status === 'HIGH_RISK' || Number(q.risk_score || 0) >= 60);
+  const avgMargin = quotations.length > 0 
+    ? quotations.reduce((acc: number, q: QuotationResponse) => acc + Number(q.margin_percent || 0), 0) / quotations.length 
+    : 35.0;
 
-  // Manager-specific calculations (derived from pending step role)
-  const managerPending = approvals.filter(a => {
-    const pendingStep = a.steps.find(s => s.status === 'PENDING');
-    return a.status === 'PENDING' && pendingStep?.roleRequired === 'SALES_MANAGER';
-  });
-  const discountBreachQuotes = quotations.filter(q => 
-    q.lines.some(l => l.discountExcessPercent > 0)
+  const repQuotes = quotations.filter((q: QuotationResponse) => 
+    q.sales_rep_name === currentUser.name || q.sales_rep_id === currentUser.id
   );
+  const repPipeline = (repQuotes.length > 0 ? repQuotes : quotations).reduce(
+    (acc: number, q: QuotationResponse) => acc + Number(q.total_amount || 0), 0
+  );
+  const repQuota = 135000;
+  const repAttainment = Math.min(100, Math.round((repPipeline / repQuota) * 100));
 
-  // Handle fast approval right from Manager Dashboard
-  const handleQuickApprove = (appId: string, quoteNum: string) => {
-    approveCurrentStep(appId, 'Approved directly via Sales Manager Priority Dashboard.');
-    showNotification(`Approved ${quoteNum} as Sales Manager. Status updated in governance ledger.`, 'success');
+  const handleCreateQuote = async () => {
+    try {
+      const defaultCust = customers[0];
+      if (!defaultCust) {
+        showNotification('No customers available to create quotation.', 'warning');
+        return;
+      }
+      const newQuote = await quotationService.createQuotation({ customer_id: defaultCust.id });
+      queryClient.invalidateQueries({ queryKey: ['quotations'] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline'] });
+      setSelectedQuoteId(newQuote.id);
+      setCurrentPage('quote-builder');
+      showNotification('New quotation draft initialized.', 'success');
+    } catch (err: any) {
+      showNotification(err?.response?.data?.detail || 'Failed to create quotation.', 'error');
+    }
   };
 
-  const handleQuickRevision = (appId: string, quoteNum: string) => {
-    returnForRevision(appId, 'Returned from Manager Dashboard. Please add recurring service support.');
-    showNotification(`Returned ${quoteNum} for revision. Sales Rep notified.`, 'warning');
+  const handleQuickApprove = async (appId: string, quoteNum?: string) => {
+    try {
+      await approvalService.approve(appId, { comment: 'Approved directly via Sales Manager Priority Dashboard.' });
+      queryClient.invalidateQueries({ queryKey: ['approvals'] });
+      queryClient.invalidateQueries({ queryKey: ['quotations'] });
+      showNotification(`Approved ${quoteNum || 'quotation'} as Sales Manager.`, 'success');
+    } catch (err: any) {
+      showNotification(err?.response?.data?.detail || 'Approval failed.', 'error');
+    }
+  };
+
+  const handleQuickRevision = async (appId: string, quoteNum?: string) => {
+    try {
+      await approvalService.returnForRevision(appId, { comment: 'Returned from Manager Dashboard for revision.' });
+      queryClient.invalidateQueries({ queryKey: ['approvals'] });
+      queryClient.invalidateQueries({ queryKey: ['quotations'] });
+      showNotification(`Returned ${quoteNum || 'quotation'} for revision.`, 'warning');
+    } catch (err: any) {
+      showNotification(err?.response?.data?.detail || 'Return failed.', 'error');
+    }
   };
 
   return (
@@ -100,7 +119,7 @@ export const DashboardView: React.FC = () => {
             </span>
           </div>
           <p className="text-xs text-gray-500 mt-1">
-            {role === 'SALES_REP' && `Welcome back, ${currentUser.name}. Track your personal quota attainment, manage active client negotiations, and monitor approval routing.`}
+            {role === 'SALES_REP' && `Welcome back, ${currentUser.name}. Track your personal quota attainment, manage active client deals, and monitor approval routing.`}
             {role === 'SALES_MANAGER' && `Welcome back, ${currentUser.name}. Oversee team pipeline velocity, review pending discount requests, and protect gross margin thresholds.`}
             {role === 'FINANCE_OPERATIONS' && `Welcome back, ${currentUser.name}. Monitor cash collection, COGS margin floors, recurring subscription ARR, and Tier-2 risk approvals.`}
             {role === 'ADMIN' && `Welcome back, ${currentUser.name}. Manage enterprise RBAC matrices, authoritative discount rules, warehouse allocations, and immutable audit trails.`}
@@ -111,9 +130,7 @@ export const DashboardView: React.FC = () => {
         <div className="flex items-center gap-2">
           {role === 'SALES_REP' && (
             <button
-              onClick={() => {
-                createNewQuotation();
-              }}
+              onClick={handleCreateQuote}
               className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#2563EB] hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition cursor-pointer"
             >
               <Plus className="w-4 h-4" />
@@ -178,32 +195,32 @@ export const DashboardView: React.FC = () => {
             </button>
           </div>
 
-          {/* Quick-action items list */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {pendingApprovals.slice(0, 2).map((app) => (
+            {pendingApprovals.slice(0, 2).map((app: ApprovalInstanceResponse) => (
               <div key={app.id} className="bg-white rounded-lg border border-purple-100 p-4 shadow-2xs space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <span className="font-mono font-bold text-[#2563EB] text-xs">{app.quoteNumber}</span>
-                    <span className="font-bold text-gray-900 text-xs ml-2">{app.customerName}</span>
+                    <span className="font-mono font-bold text-[#2563EB] text-xs">{app.quotation_number || 'Quote'}</span>
+                    <span className="font-bold text-gray-900 text-xs ml-2">{app.customer_name || 'Customer'}</span>
                   </div>
-                  <RiskBadge score={app.riskScore} />
+                  <RiskBadge score={Number(app.risk_score || 0)} />
                 </div>
 
                 <div className="text-xs text-gray-600">
-                  Submitted by: <strong className="text-gray-900">{app.salesRepName}</strong> &bull; Amount:{' '}
-                  <strong className="font-mono text-gray-900">${app.amount.toLocaleString()}</strong>
+                  Submitted by: <strong className="text-gray-900">{app.sales_rep_name || 'Sales Rep'}</strong> &bull; Amount:{' '}
+                  <strong className="font-mono text-gray-900">${Number(app.total_amount || 0).toLocaleString()}</strong>
                 </div>
 
-                <p className="text-[11px] text-gray-500 bg-gray-50 p-2 rounded border border-gray-100">
-                  Reason: {app.reason}
-                </p>
+                {(app.reasons || []).length > 0 && (
+                  <p className="text-[11px] text-gray-500 bg-gray-50 p-2 rounded border border-gray-100">
+                    Reason: {app.reasons![0]}
+                  </p>
+                )}
 
-                {/* Manager Quick Action Controls */}
                 <div className="flex items-center justify-between pt-1">
                   <button
                     onClick={() => {
-                      setSelectedQuoteId(app.quotationId);
+                      setSelectedQuoteId(app.quotation_id);
                       setCurrentPage('quote-builder');
                     }}
                     className="text-[11px] font-semibold text-gray-600 hover:text-gray-900 cursor-pointer"
@@ -213,14 +230,14 @@ export const DashboardView: React.FC = () => {
 
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => handleQuickRevision(app.id, app.quoteNumber)}
+                      onClick={() => handleQuickRevision(app.id, app.quotation_number)}
                       className="flex items-center gap-1 px-2.5 py-1 rounded border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 text-[11px] font-semibold transition cursor-pointer"
                     >
                       <RotateCcw className="w-3 h-3 text-amber-600" />
                       <span>Request Revision</span>
                     </button>
                     <button
-                      onClick={() => handleQuickApprove(app.id, app.quoteNumber)}
+                      onClick={() => handleQuickApprove(app.id, app.quotation_number)}
                       className="flex items-center gap-1 px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold shadow-2xs transition cursor-pointer"
                     >
                       <Check className="w-3 h-3" />
@@ -237,21 +254,21 @@ export const DashboardView: React.FC = () => {
       {/* Role-Specific 4-Column KPI Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* Card 1 */}
-        <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
+        <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-xs">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest">
             {role === 'SALES_REP' ? 'My Active Pipeline' : role === 'SALES_MANAGER' ? 'Team Pipeline' : role === 'FINANCE_OPERATIONS' ? 'Invoiced ARR' : 'System Volume'}
           </p>
           <p className="text-2xl font-bold mt-1 text-[#111827]">
-            {role === 'SALES_REP' ? `$${Math.round(repPipeline).toLocaleString()}` : `$${Math.round(totalPipeline).toLocaleString()}`}
+            ${Math.round(role === 'SALES_REP' ? repPipeline : totalPipeline).toLocaleString()}
           </p>
           <div className="mt-2 flex items-center gap-1 text-xs text-green-600 font-medium">
             <TrendingUp className="w-3.5 h-3.5" />
-            <span>{role === 'SALES_REP' ? '3 Qualified Deals' : '+12.4% vs last month'}</span>
+            <span>{quotations.length} Tracked Deal(s)</span>
           </div>
         </div>
 
         {/* Card 2 */}
-        <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
+        <div className="bg-white p-5 rounded-xl border border-gray-100 shadow-xs">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest">
             {role === 'SALES_REP' ? 'Target Attainment' : role === 'SALES_MANAGER' ? 'Team Avg. Margin' : role === 'FINANCE_OPERATIONS' ? 'COGS Floor Adherence' : 'Active RBAC Roles'}
           </p>
@@ -260,7 +277,7 @@ export const DashboardView: React.FC = () => {
           </p>
           <div className="mt-2 flex items-center gap-1 text-xs text-blue-600 font-medium">
             <span>
-              {role === 'SALES_REP' ? `$${(repQuota / 1000).toFixed(0)}k Q3 Quota Target` : role === 'ADMIN' ? 'Full RBAC Policy Enforced' : 'Within 30% Floor Limit'}
+              {role === 'SALES_REP' ? `$${(repQuota / 1000).toFixed(0)}k Q3 Quota Target` : role === 'ADMIN' ? 'Full RBAC Policy Enforced' : 'Within Corporate Margin Floor'}
             </span>
           </div>
         </div>
@@ -268,53 +285,49 @@ export const DashboardView: React.FC = () => {
         {/* Card 3 */}
         <div 
           onClick={() => setCurrentPage('approvals')}
-          className={`bg-white p-5 rounded-xl border shadow-sm cursor-pointer transition ${
-            role === 'SALES_MANAGER' ? 'border-purple-200 bg-purple-50/20 hover:border-purple-300' : 'border-gray-100 hover:border-gray-200'
-          }`}
+          className="bg-white p-5 rounded-xl border border-gray-100 shadow-xs cursor-pointer hover:border-gray-200 transition"
         >
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest">
-            {role === 'SALES_REP' ? 'My Submitted Approvals' : role === 'SALES_MANAGER' ? 'Pending Sign-Offs' : role === 'FINANCE_OPERATIONS' ? 'Tier 2 Finance Sign-Offs' : 'Audit Logs Today'}
+            Pending Sign-Offs
           </p>
-          <p className={`text-2xl font-bold mt-1 ${role === 'SALES_MANAGER' ? 'text-purple-700' : 'text-[#111827]'}`}>
-            {role === 'SALES_REP' ? repPendingApprovals.length : role === 'ADMIN' ? auditLogs.length : pendingApprovals.length}
+          <p className="text-2xl font-bold mt-1 text-purple-700">
+            {pendingApprovals.length}
           </p>
           <div className="mt-2 flex items-center gap-2">
-            <span className={`px-2 py-0.5 text-[10px] rounded-full font-bold uppercase ${
-              role === 'SALES_MANAGER' ? 'bg-purple-100 text-purple-800' : 'bg-blue-50 text-blue-700'
-            }`}>
-              {role === 'SALES_REP' ? 'Tracking Mode' : role === 'SALES_MANAGER' ? 'Action Required' : 'Monitored'}
+            <span className="px-2 py-0.5 text-[10px] rounded-full font-bold uppercase bg-purple-100 text-purple-800">
+              {pendingApprovals.length > 0 ? 'Action Required' : 'All Clear'}
             </span>
           </div>
         </div>
 
         {/* Card 4 */}
         <div 
-          onClick={() => setCurrentPage(role === 'FINANCE_OPERATIONS' ? 'billing' : 'deal-health')}
-          className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm border-l-4 border-l-red-500 cursor-pointer hover:border-gray-200 transition"
+          onClick={() => setCurrentPage('quotations')}
+          className="bg-white p-5 rounded-xl border border-gray-100 shadow-xs border-l-4 border-l-red-500 cursor-pointer hover:border-gray-200 transition"
         >
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest">
-            {role === 'FINANCE_OPERATIONS' ? 'Unbilled Backlog' : role === 'SALES_REP' ? 'Ceiling Warnings' : 'High Risk Deals'}
+            High Risk Deals
           </p>
           <p className="text-2xl font-bold mt-1 text-red-600">
-            {role === 'FINANCE_OPERATIONS' ? '$84,200' : role === 'SALES_REP' ? '1 Quote' : String(highRiskQuotes.length).padStart(2, '0')}
+            {String(highRiskQuotes.length).padStart(2, '0')}
           </p>
           <p className="text-[10px] text-gray-400 mt-2">
-            {highRiskQuotes.length > 0 ? `Action required for ${highRiskQuotes[0].customerName}` : 'All deals within tolerance'}
+            {highRiskQuotes.length > 0 ? `Requires policy ceiling review` : 'All deals within policy tolerance'}
           </p>
         </div>
       </div>
 
       {/* Main Content Grid: 2 Cols Table, 1 Col DealFlow Intelligence */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column (2 Cols): Table of Quotations tailored to Role */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden flex flex-col">
+        {/* Left Column: Quotations Table */}
+        <div className="lg:col-span-2 bg-white rounded-xl border border-gray-100 shadow-xs overflow-hidden flex flex-col">
           <div className="p-5 border-b border-gray-100 flex justify-between items-center">
             <div>
               <h3 className="font-bold text-gray-800">
-                {role === 'SALES_REP' ? 'My Quotations & Accounts' : role === 'SALES_MANAGER' ? 'Team Quotations & Exception Radar' : 'Commercial Quotations'}
+                {role === 'SALES_REP' ? 'My Quotations & Accounts' : 'Commercial Quotations & Pipeline'}
               </h3>
               <p className="text-[11px] text-gray-400">
-                {role === 'SALES_REP' ? 'Filtered to your assigned accounts' : 'Authoritative commercial governance view'}
+                Authoritative commercial governance view
               </p>
             </div>
             <button 
@@ -339,47 +352,54 @@ export const DashboardView: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="text-sm divide-y divide-gray-100">
-                {(role === 'SALES_REP' ? repQuotes : quotations).slice(0, 5).map((q) => (
-                  <tr 
-                    key={q.id}
-                    onClick={() => {
-                      setSelectedQuoteId(q.id);
-                      setCurrentPage('quote-builder');
-                    }}
-                    className="hover:bg-gray-50 transition-colors cursor-pointer"
-                  >
-                    <td className="px-5 py-4 font-mono text-xs text-gray-400">{q.quoteNumber}</td>
-                    <td className="px-5 py-4 font-bold text-gray-900">
-                      <div>{q.customerName}</div>
-                      <div className="text-[10px] text-gray-400 font-normal">Tier: {q.customerTier}</div>
-                    </td>
-                    {role !== 'SALES_REP' && (
-                      <td className="px-5 py-4 text-xs text-gray-600">{q.salesRepName}</td>
-                    )}
-                    <td className="px-5 py-4 font-mono text-gray-800 font-medium">
-                      ${q.totalAmount.toLocaleString()}
-                    </td>
-                    <td className={`px-5 py-4 text-center font-mono font-medium ${
-                      q.blendedMarginPercent < 20 ? 'text-red-500 font-bold' : 'text-gray-600'
-                    }`}>
-                      {q.blendedMarginPercent}%
-                    </td>
-                    <td className="px-5 py-4 text-center">
-                      <RiskBadge score={q.blendedRiskScore} status={q.riskStatus} />
-                    </td>
-                    <td className="px-5 py-4">
-                      <StatusBadge status={q.stage} />
-                    </td>
-                  </tr>
-                ))}
+                {quotations.slice(0, 5).map((q: QuotationResponse) => {
+                  const marginNum = Number(q.margin_percent || 0);
+                  const totalNum = Number(q.total_amount || 0);
+                  const riskNum = Number(q.risk_score || 0);
+
+                  return (
+                    <tr 
+                      key={q.id}
+                      onClick={() => {
+                        setSelectedQuoteId(q.id);
+                        setCurrentPage('quote-builder');
+                      }}
+                      className="hover:bg-gray-50 transition-colors cursor-pointer"
+                    >
+                      <td className="px-5 py-4 font-mono text-xs text-gray-400">{q.quotation_number}</td>
+                      <td className="px-5 py-4 font-bold text-gray-900">
+                        <div>{q.customer_name || 'Account'}</div>
+                        {q.customer_tier_name && (
+                          <div className="text-[10px] text-gray-400 font-normal">Tier: {q.customer_tier_name}</div>
+                        )}
+                      </td>
+                      {role !== 'SALES_REP' && (
+                        <td className="px-5 py-4 text-xs text-gray-600">{q.sales_rep_name || 'Sales Rep'}</td>
+                      )}
+                      <td className="px-5 py-4 font-mono text-gray-800 font-medium">
+                        ${totalNum.toLocaleString()}
+                      </td>
+                      <td className={`px-5 py-4 text-center font-mono font-medium ${
+                        marginNum < 20 ? 'text-red-500 font-bold' : 'text-gray-600'
+                      }`}>
+                        {marginNum.toFixed(1)}%
+                      </td>
+                      <td className="px-5 py-4 text-center">
+                        <RiskBadge score={riskNum} status={q.risk_status} />
+                      </td>
+                      <td className="px-5 py-4">
+                        <StatusBadge status={q.status} />
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </div>
 
-        {/* Right Column (1 Col): DealFlow Intelligence Light SaaS Card */}
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex flex-col">
-          {/* Header */}
+        {/* Right Column: DealFlow Intelligence */}
+        <div className="bg-white rounded-xl border border-gray-100 shadow-xs p-5 flex flex-col">
           <div className="flex items-center justify-between pb-3.5 border-b border-gray-100 mb-4">
             <div className="flex items-center gap-2.5">
               <div className="w-7 h-7 rounded-lg bg-blue-50 text-[#2563EB] flex items-center justify-center shrink-0 border border-blue-100">
@@ -388,182 +408,66 @@ export const DashboardView: React.FC = () => {
               <div>
                 <h3 className="font-bold text-sm text-gray-900 tracking-tight">DealFlow Intelligence</h3>
                 <p className="text-[11px] text-gray-500">
-                  AI-powered insights for your deals
+                  Governance insights for your pipeline
                 </p>
               </div>
             </div>
             <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded bg-gray-100 text-gray-600 border border-gray-200">
-              {role === 'SALES_REP' && 'Guidance'}
-              {role === 'SALES_MANAGER' && 'Radar'}
-              {role === 'FINANCE_OPERATIONS' && 'Risk Guard'}
-              {role === 'ADMIN' && 'Policy Engine'}
+              Policy Engine
             </span>
           </div>
 
           <div className="flex-1 space-y-4">
-            {/* Intelligence Alert */}
-            <div className="bg-rose-50/50 p-4 rounded-xl border border-rose-200/80 space-y-2.5">
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-1.5">
-                  <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                  <span className="text-xs font-bold text-rose-950 uppercase tracking-wide">
-                    {role === 'SALES_REP' ? 'Submission Alert' : 'Governance Alert'}
+            {highRiskQuotes.length > 0 ? (
+              <div className="bg-rose-50/50 p-4 rounded-xl border border-rose-200/80 space-y-2.5">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                    <span className="text-xs font-bold text-rose-950 uppercase tracking-wide">
+                      Governance Breaches
+                    </span>
+                  </div>
+                  <span className="px-2 py-0.5 bg-rose-100 text-rose-700 border border-rose-200 text-[10px] font-bold rounded-full uppercase">
+                    Requires Review
                   </span>
                 </div>
-                <span className="px-2 py-0.5 bg-rose-100 text-rose-700 border border-rose-200 text-[10px] font-bold rounded-full uppercase">
-                  High Risk
-                </span>
+
+                <p className="text-xs text-rose-950/90 leading-relaxed font-normal">
+                  {highRiskQuotes[0].quotation_number} ({highRiskQuotes[0].customer_name}) discounts exceed policy ceilings.
+                </p>
               </div>
-
-              <p className="text-xs text-rose-950/90 leading-relaxed font-normal">
-                {role === 'SALES_REP' 
-                  ? 'NovaTech (QT-9405) discount exceeds Gold tier limit by 8.5%. Awaiting Marcus Vance.'
-                  : 'Novatech (QT-9405) discount exceeds tier ceiling by 8.5%.'}
-              </p>
-
-              <div className="p-2.5 bg-white/90 rounded-lg border border-rose-200/60 text-[11px] text-slate-600">
-                <span className="font-semibold text-rose-900 mr-1">Tip:</span>
-                <span>
-                  {role === 'SALES_REP' 
-                    ? 'Adding a bundled support contract can reduce risk score below approval trigger.' 
-                    : 'Margin impact reduces net profit below corporate target. Level 1 approval required.'}
-                </span>
+            ) : (
+              <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/40 text-emerald-900 text-xs">
+                <span className="font-bold block mb-1">Portfolio Health: Optimal</span>
+                All active quotations comply with corporate gross margin floors and customer tier discount allowances.
               </div>
-            </div>
-
-            {/* Smart Recommendation */}
-            <div className="p-4 rounded-xl border border-blue-200/70 bg-blue-50/40 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-blue-900 uppercase tracking-wide">
-                  Smart Upsell Strategy
-                </span>
-                <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                  +4.2% Margin Lift
-                </span>
-              </div>
-
-              <p className="text-xs text-slate-700 leading-relaxed">
-                Add <span className="font-semibold text-slate-900">Premium Support Bundle</span> to NovaTech to offset margin loss.
-              </p>
-
-              <div className="pt-1 flex justify-end">
-                <button 
-                  onClick={() => {
-                    setSelectedQuoteId('q-1049');
-                    setCurrentPage('quote-builder');
-                  }}
-                  className="text-xs bg-[#2563EB] hover:bg-blue-700 px-3.5 py-1.5 rounded-lg transition-colors text-white font-semibold shadow-xs cursor-pointer flex items-center gap-1.5"
-                >
-                  <span>Add to Quote</span>
-                  <ArrowRight className="w-3 h-3" />
-                </button>
-              </div>
-            </div>
+            )}
 
             {/* Quota Velocity */}
             <div className="p-4 rounded-xl border border-gray-100 bg-gray-50/60 space-y-2">
               <div className="flex justify-between items-center">
                 <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">
-                  {role === 'SALES_REP' ? 'Quota Velocity' : 'Team Governance Index'}
+                  Attainment Velocity
                 </span>
                 <span className="text-xs font-bold font-mono text-[#2563EB]">
-                  {role === 'SALES_REP' ? '92%' : '72%'}
+                  {repAttainment}%
                 </span>
               </div>
 
               <div className="w-full h-2 bg-gray-200/80 rounded-full overflow-hidden">
                 <div 
                   className="h-full bg-[#2563EB] rounded-full transition-all duration-300"
-                  style={{ width: role === 'SALES_REP' ? '92%' : '72%' }}
-                ></div>
+                  style={{ width: `${repAttainment}%` }}
+                />
               </div>
 
               <div className="flex justify-between items-center text-[11px] text-gray-500">
-                <span>
-                  {role === 'SALES_REP' ? 'Target Attainment' : 'Operational Efficiency'}
-                </span>
+                <span>Current Pipeline Volume</span>
                 <span className="font-medium text-gray-600">
-                  {role === 'SALES_REP' ? '$124.2k of $135k' : 'Within Threshold'}
+                  ${Math.round(totalPipeline).toLocaleString()}
                 </span>
               </div>
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Secondary Operational Row: Pending Approvals & Immutable Audit Feed */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Approvals Overview */}
-        <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
-          <div className="flex items-center justify-between pb-3 border-b border-gray-100 mb-3">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-[#2563EB]" />
-              <h3 className="text-sm font-bold text-gray-800">
-                {role === 'SALES_REP' ? 'My Active Approval Submissions' : `Pending Approvals Queue (${pendingApprovals.length})`}
-              </h3>
-            </div>
-            <button
-              onClick={() => setCurrentPage('approvals')}
-              className="text-xs text-[#2563EB] font-semibold hover:underline cursor-pointer"
-            >
-              {role === 'SALES_REP' ? 'Track Status' : 'Review All'}
-            </button>
-          </div>
-
-          <div className="space-y-3">
-            {pendingApprovals.map((app) => (
-              <div
-                key={app.id}
-                onClick={() => setCurrentPage('approvals')}
-                className={`p-3.5 rounded-lg border transition cursor-pointer ${
-                  role === 'SALES_MANAGER' 
-                    ? 'border-purple-200 bg-purple-50/40 hover:bg-purple-50' 
-                    : 'border-amber-200 bg-amber-50/40 hover:bg-amber-50'
-                }`}
-              >
-                <div className="flex items-center justify-between text-xs mb-1">
-                  <span className="font-bold text-gray-900">{app.quoteNumber} — {app.customerName}</span>
-                  <span className="font-mono font-bold text-gray-900">${app.amount.toLocaleString()}</span>
-                </div>
-                <div className="flex items-center justify-between text-[11px] mt-1.5">
-                  <span className="text-gray-600 font-medium">Rep: {app.salesRepName}</span>
-                  <span className="px-2 py-0.5 rounded bg-white text-gray-800 border border-gray-200 font-semibold text-[10px]">
-                    {role === 'SALES_REP' ? 'Awaiting Marcus Vance' : 'Requires L1 Sign-Off'}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Operational Audit Feed */}
-        <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
-          <div className="flex items-center justify-between pb-3 border-b border-gray-100 mb-3">
-            <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-gray-500" />
-              <h3 className="text-sm font-bold text-gray-800">Governance Audit Trail</h3>
-            </div>
-            <span className="text-[11px] text-gray-400 font-mono">Immutable Log</span>
-          </div>
-
-          <div className="space-y-3">
-            {auditLogs.slice(0, 3).map((log) => (
-              <div key={log.id} className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 border border-gray-100 text-xs">
-                <div className="w-7 h-7 rounded-md bg-blue-50 text-[#2563EB] flex items-center justify-center shrink-0 mt-0.5">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-gray-900 truncate">{log.userName} ({log.userRole})</span>
-                    <span className="text-[10px] text-gray-400 font-mono shrink-0">
-                      {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
-                  <div className="text-gray-700 font-medium mt-0.5">{log.action}</div>
-                  {log.reason && <p className="text-gray-500 text-[11px] mt-0.5">{log.reason}</p>}
-                </div>
-              </div>
-            ))}
           </div>
         </div>
       </div>

@@ -58,9 +58,19 @@ class Customer(Base):
     tier: Mapped[CustomerTier] = relationship(
         "CustomerTier", back_populates="customers"
     )
-    users: Mapped[List[User]] = relationship(
-        "User", back_populates="customer", foreign_keys="User.customer_id"
+    user: Mapped[Optional[User]] = relationship(
+        "User", back_populates="customer", foreign_keys="User.customer_id", uselist=False
     )
+
+    @property
+    def users(self) -> List[User]:
+        """Backward-compatible collection of users."""
+        return [self.user] if self.user is not None else []
+
+    @property
+    def user_id(self) -> Optional[uuid.UUID]:
+        """Convenience property to access the linked user id."""
+        return self.user.id if self.user is not None else None
     quotations: Mapped[List[Quotation]] = relationship(
         "Quotation", back_populates="customer"
     )

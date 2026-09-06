@@ -13,7 +13,6 @@ export const RoleSwitcherBar: React.FC = () => {
     { role: 'SALES_REP', label: 'Sales Rep', user: 'Sarah Chen' },
     { role: 'SALES_MANAGER', label: 'Sales Manager', user: 'Marcus Vance' },
     { role: 'FINANCE_OPERATIONS', label: 'Finance & Ops', user: 'Elena Rostova' },
-    { role: 'FULFILLMENT_OPERATOR', label: 'Fulfillment', user: 'Carlos Ruiz' },
     { role: 'ADMIN', label: 'Admin', user: 'Alex Mercer' },
     { role: 'CUSTOMER_PORTAL', label: 'Customer Portal', user: 'David Kross' }
   ];

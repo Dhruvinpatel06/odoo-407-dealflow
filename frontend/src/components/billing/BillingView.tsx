@@ -2,51 +2,91 @@ import React, { useState } from 'react';
 import { 
   CreditCard, 
   Repeat, 
-  Calendar, 
   DollarSign, 
-  CheckCircle2, 
-  Clock, 
-  Plus, 
   FileText, 
-  AlertCircle,
-  Building2,
-  Receipt,
-  RotateCcw
+  Receipt, 
+  RotateCcw,
+  Loader2
 } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useApp } from '../../context/AppContext';
 import { StatusBadge } from '../common/StatusBadge';
+import { invoiceService, subscriptionService } from '../../services/api';
+import { InvoiceResponse } from '../../services/invoiceService';
+import { SubscriptionResponse } from '../../services/subscriptionService';
 
 export const BillingView: React.FC = () => {
-  const { 
-    invoices, 
-    subscriptions, 
-    recordPayment, 
-    modifySubscription, 
-    issueCreditNote,
-    showNotification 
-  } = useApp();
+  const { showNotification } = useApp();
+  const queryClient = useQueryClient();
 
-  const [paymentAmount, setPaymentAmount] = useState<number>(9504);
-  const [selectedInvoiceId, setSelectedInvoiceId] = useState<string>('inv-1002');
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState<number>(0);
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<string>('');
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState<boolean>(false);
 
-  // Credit Note states
-  const [isCreditModalOpen, setIsCreditModalOpen] = useState(false);
-  const [creditInvoiceId, setCreditInvoiceId] = useState<string>('inv-1001');
-  const [creditAmount, setCreditAmount] = useState<number>(500);
-  const [creditReason, setCreditReason] = useState<string>('Customer SLA compensation for delivery delay');
+  // 1. Fetch Invoices
+  const { data: invoices = [], isLoading: isInvoicesLoading } = useQuery({
+    queryKey: ['invoices'],
+    queryFn: () => invoiceService.listInvoices(),
+  });
+
+  // 2. Fetch Subscriptions
+  const { data: subscriptions = [], isLoading: isSubsLoading } = useQuery({
+    queryKey: ['subscriptions'],
+    queryFn: () => subscriptionService.listSubscriptions(),
+  });
+
+  const invalidateBilling = () => {
+    queryClient.invalidateQueries({ queryKey: ['invoices'] });
+    queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
+  };
+
+  // Payment Mutation
+  const paymentMutation = useMutation({
+    mutationFn: ({ invoiceId, amount }: { invoiceId: string; amount: number }) =>
+      invoiceService.recordPayment(invoiceId, {
+        amount,
+        payment_method: 'BANK_TRANSFER',
+        transaction_reference: `TXN-${Date.now().toString().slice(-6)}`,
+      }),
+    onSuccess: () => {
+      invalidateBilling();
+      setIsPaymentModalOpen(false);
+      showNotification('Customer payment successfully recorded and reconciled.', 'success');
+    },
+    onError: (err: any) => {
+      showNotification(err?.response?.data?.detail || 'Failed to record payment.', 'error');
+    },
+  });
+
+  // Modify Subscription Mutation (Prorate)
+  const modifySubMutation = useMutation({
+    mutationFn: ({ subId, newQty }: { subId: string; newQty: number }) =>
+      subscriptionService.applyProration(subId, {
+        new_quantity: newQty,
+        effective_date: new Date().toISOString(),
+      }),
+    onSuccess: () => {
+      invalidateBilling();
+      showNotification('Subscription prorated and updated.', 'success');
+    },
+    onError: (err: any) => {
+      showNotification(err?.response?.data?.detail || 'Proration failed.', 'error');
+    },
+  });
 
   const handleRecordPayment = () => {
-    if (!selectedInvoiceId) return;
-    recordPayment(selectedInvoiceId, paymentAmount);
-    setIsPaymentModalOpen(false);
+    if (!selectedInvoiceId || paymentAmount <= 0) return;
+    paymentMutation.mutate({ invoiceId: selectedInvoiceId, amount: paymentAmount });
   };
 
-  const handleIssueCredit = () => {
-    if (!creditInvoiceId || creditAmount <= 0) return;
-    issueCreditNote(creditInvoiceId, creditAmount, creditReason);
-    setIsCreditModalOpen(false);
-  };
+  if (isInvoicesLoading || isSubsLoading) {
+    return (
+      <div className="p-16 flex flex-col items-center justify-center text-slate-500 gap-3">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        <span className="text-xs font-medium">Loading invoices and recurring subscriptions...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -59,15 +99,16 @@ export const BillingView: React.FC = () => {
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setIsCreditModalOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-purple-300 bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-semibold shadow-xs transition cursor-pointer"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Issue Credit Note</span>
-          </button>
-
-          <button
-            onClick={() => setIsPaymentModalOpen(true)}
+            onClick={() => {
+              const unpaid = invoices.find((i: InvoiceResponse) => Number(i.balance_due || i.amount) > 0);
+              if (unpaid) {
+                setSelectedInvoiceId(unpaid.id);
+                setPaymentAmount(Number(unpaid.balance_due || unpaid.amount));
+                setIsPaymentModalOpen(true);
+              } else {
+                showNotification('All invoices are fully settled.', 'info');
+              }
+            }}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition cursor-pointer"
           >
             <DollarSign className="w-3.5 h-3.5" />
@@ -97,7 +138,7 @@ export const BillingView: React.FC = () => {
           <div>
             <span className="text-xs font-bold text-purple-950 uppercase tracking-wide">Recurring Subscription Stream</span>
             <p className="text-xs text-purple-900/80 mt-0.5 leading-relaxed">
-              Automated periodic billing schedule (Monthly / Quarterly / Yearly) with mid-cycle proration engine and credit-note reconciling.
+              Automated periodic billing schedule with mid-cycle proration engine and credit-note reconciling.
             </p>
           </div>
         </div>
@@ -120,7 +161,7 @@ export const BillingView: React.FC = () => {
                 <th className="py-3 px-4">Subscription Service</th>
                 <th className="py-3 px-3">Frequency</th>
                 <th className="py-3 px-3">Units</th>
-                <th className="py-3 px-3">Recurring Rate</th>
+                <th className="py-3 px-3">Rate</th>
                 <th className="py-3 px-3">Start Date</th>
                 <th className="py-3 px-3">Next Billing Date</th>
                 <th className="py-3 px-3">Status</th>
@@ -128,41 +169,59 @@ export const BillingView: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {subscriptions.map((sub) => (
-                <tr key={sub.id} className="hover:bg-slate-50 transition">
-                  <td className="py-3 px-4">
-                    <div className="font-semibold text-slate-900">{sub.productName}</div>
-                    <div className="text-[10px] text-slate-400 font-mono">Order: {sub.orderId.toUpperCase()}</div>
-                  </td>
-                  <td className="py-3 px-3">
-                    <span className="px-2 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 font-bold text-[10px]">
-                      {sub.interval}
-                    </span>
-                  </td>
-                  <td className="py-3 px-3 font-mono font-bold text-slate-800">
-                    {sub.quantity}
-                  </td>
-                  <td className="py-3 px-3 font-mono font-bold text-slate-900">
-                    ${sub.amount.toLocaleString()}/mo
-                  </td>
-                  <td className="py-3 px-3 font-mono text-slate-600">{sub.startDate}</td>
-                  <td className="py-3 px-3 font-mono text-slate-800 font-semibold">{sub.nextBillingDate}</td>
-                  <td className="py-3 px-3">
-                    <StatusBadge status={sub.status} />
-                  </td>
-                  <td className="py-3 px-4 text-right">
-                    <div className="flex items-center justify-end gap-1.5">
-                      <button
-                        onClick={() => modifySubscription(sub.id, 1)}
-                        className="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[11px] transition cursor-pointer"
-                        title="Add unit with mid-cycle proration"
-                      >
-                        +1 Unit (Prorate)
-                      </button>
-                    </div>
+              {subscriptions.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-8 text-center text-slate-400 text-xs">
+                    No recurring subscriptions currently active.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                subscriptions.map((sub: SubscriptionResponse) => {
+                  const qtyNum = Number(sub.quantity || 1);
+                  const priceNum = Number(sub.unit_price || 0);
+
+                  return (
+                    <tr key={sub.id} className="hover:bg-slate-50 transition">
+                      <td className="py-3 px-4">
+                        <div className="font-semibold text-slate-900">{sub.product_name || 'Recurring Service'}</div>
+                        <div className="text-[10px] text-slate-400 font-mono">Order: {sub.order_id?.substring(0, 8)?.toUpperCase()}</div>
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className="px-2 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 font-bold text-[10px]">
+                          {sub.billing_interval || 'MONTHLY'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 font-mono font-bold text-slate-800">
+                        {qtyNum}
+                      </td>
+                      <td className="py-3 px-3 font-mono font-bold text-slate-900">
+                        ${priceNum.toLocaleString()}
+                      </td>
+                      <td className="py-3 px-3 font-mono text-slate-600">
+                        {sub.start_date ? new Date(sub.start_date).toLocaleDateString() : '-'}
+                      </td>
+                      <td className="py-3 px-3 font-mono text-slate-800 font-semibold">
+                        {sub.next_billing_date ? new Date(sub.next_billing_date).toLocaleDateString() : '-'}
+                      </td>
+                      <td className="py-3 px-3">
+                        <StatusBadge status={sub.status} />
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => modifySubMutation.mutate({ subId: sub.id, newQty: qtyNum + 1 })}
+                            disabled={modifySubMutation.isPending}
+                            className="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[11px] transition cursor-pointer disabled:opacity-50"
+                            title="Add unit with mid-cycle proration"
+                          >
+                            +1 Unit (Prorate)
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
@@ -194,49 +253,66 @@ export const BillingView: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {invoices.map((inv) => {
-                const balance = inv.amount - inv.paidAmount;
-                return (
-                  <tr key={inv.id} className="hover:bg-slate-50 transition">
-                    <td className="py-3.5 px-4 font-mono font-bold text-blue-600">{inv.invoiceNumber}</td>
-                    <td className="py-3.5 px-4 font-semibold text-slate-900">{inv.customerName}</td>
-                    <td className="py-3.5 px-3">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        inv.type === 'ONE_TIME' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-purple-50 text-purple-700 border border-purple-200'
-                      }`}>
-                        {inv.type.replace('_', ' ')}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-3 font-mono font-bold text-slate-900">
-                      ${inv.amount.toLocaleString()}
-                    </td>
-                    <td className="py-3.5 px-3 font-mono font-semibold text-emerald-600">
-                      ${inv.paidAmount.toLocaleString()}
-                    </td>
-                    <td className="py-3.5 px-3 font-mono font-semibold text-slate-700">
-                      ${Math.max(0, balance).toLocaleString()}
-                    </td>
-                    <td className="py-3.5 px-3 font-mono text-slate-500">{inv.dueDate}</td>
-                    <td className="py-3.5 px-3">
-                      <StatusBadge status={inv.status} />
-                    </td>
-                    <td className="py-3.5 px-4 text-right">
-                      {balance > 0 && (
-                        <button
-                          onClick={() => {
-                            setSelectedInvoiceId(inv.id);
-                            setPaymentAmount(balance);
-                            setIsPaymentModalOpen(true);
-                          }}
-                          className="px-2.5 py-1 rounded bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 font-semibold text-xs transition cursor-pointer"
-                        >
-                          Pay
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+              {invoices.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="py-8 text-center text-slate-400 text-xs">
+                    No commercial invoices issued yet.
+                  </td>
+                </tr>
+              ) : (
+                invoices.map((inv: InvoiceResponse) => {
+                  const total = Number(inv.amount || 0);
+                  const paid = Number(inv.paid_amount || 0);
+                  const balance = inv.balance_due !== undefined ? Number(inv.balance_due) : Math.max(0, total - paid);
+
+                  return (
+                    <tr key={inv.id} className="hover:bg-slate-50 transition">
+                      <td className="py-3.5 px-4 font-mono font-bold text-blue-600">
+                        {inv.invoice_number || inv.id.substring(0, 8)}
+                      </td>
+                      <td className="py-3.5 px-4 font-semibold text-slate-900">{inv.customer_name || 'Customer'}</td>
+                      <td className="py-3.5 px-3">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          inv.invoice_type === 'ONE_TIME' || inv.invoice_type === 'STANDARD'
+                            ? 'bg-blue-50 text-blue-700 border border-blue-200' 
+                            : 'bg-purple-50 text-purple-700 border border-purple-200'
+                        }`}>
+                          {inv.invoice_type}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-3 font-mono font-bold text-slate-900">
+                        ${total.toLocaleString()}
+                      </td>
+                      <td className="py-3.5 px-3 font-mono font-semibold text-emerald-600">
+                        ${paid.toLocaleString()}
+                      </td>
+                      <td className="py-3.5 px-3 font-mono font-semibold text-slate-700">
+                        ${balance.toLocaleString()}
+                      </td>
+                      <td className="py-3.5 px-3 font-mono text-slate-500">
+                        {inv.due_date ? new Date(inv.due_date).toLocaleDateString() : '-'}
+                      </td>
+                      <td className="py-3.5 px-3">
+                        <StatusBadge status={inv.status} />
+                      </td>
+                      <td className="py-3.5 px-4 text-right">
+                        {balance > 0 && (
+                          <button
+                            onClick={() => {
+                              setSelectedInvoiceId(inv.id);
+                              setPaymentAmount(balance);
+                              setIsPaymentModalOpen(true);
+                            }}
+                            className="px-2.5 py-1 rounded bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 font-semibold text-xs transition cursor-pointer"
+                          >
+                            Pay
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
@@ -255,7 +331,7 @@ export const BillingView: React.FC = () => {
                 onClick={() => setIsPaymentModalOpen(false)}
                 className="text-slate-400 hover:text-slate-600"
               >
-                ×
+                ✕
               </button>
             </div>
 
@@ -264,12 +340,20 @@ export const BillingView: React.FC = () => {
                 <label className="block font-semibold text-slate-700 mb-1">Target Invoice:</label>
                 <select
                   value={selectedInvoiceId}
-                  onChange={(e) => setSelectedInvoiceId(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedInvoiceId(e.target.value);
+                    const inv = invoices.find((i: InvoiceResponse) => i.id === e.target.value);
+                    if (inv) {
+                      const total = Number(inv.amount || 0);
+                      const paid = Number(inv.paid_amount || 0);
+                      setPaymentAmount(inv.balance_due !== undefined ? Number(inv.balance_due) : Math.max(0, total - paid));
+                    }
+                  }}
                   className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-mono font-medium"
                 >
-                  {invoices.filter(i => i.paidAmount < i.amount).map(inv => (
+                  {invoices.map((inv: InvoiceResponse) => (
                     <option key={inv.id} value={inv.id}>
-                      {inv.invoiceNumber} — {inv.customerName} (Bal: ${(inv.amount - inv.paidAmount).toLocaleString()})
+                      {inv.invoice_number || inv.id.substring(0, 8)} — {inv.customer_name || 'Customer'}
                     </option>
                   ))}
                 </select>
@@ -286,7 +370,7 @@ export const BillingView: React.FC = () => {
               </div>
 
               <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900">
-                <span className="font-semibold block">Authoritative Rule (AT-08):</span>
+                <span className="font-semibold block">FastAPI Billing Rule:</span>
                 Recording payment updates invoice status automatically: Paid Amount = 0 → ISSUED, 0 &lt; Paid &lt; Total → PARTIALLY_PAID, Paid = Total → PAID.
               </div>
             </div>
@@ -300,88 +384,10 @@ export const BillingView: React.FC = () => {
               </button>
               <button
                 onClick={handleRecordPayment}
-                className="px-4 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-2xs"
+                disabled={paymentMutation.isPending}
+                className="px-4 py-1.5 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-2xs disabled:opacity-50"
               >
                 Confirm Payment
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Issue Credit Note Modal */}
-      {isCreditModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl border border-slate-200 shadow-xl max-w-md w-full p-5 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <RotateCcw className="w-4 h-4 text-purple-600" />
-                <span>Issue Commercial Credit Note</span>
-              </h3>
-              <button
-                onClick={() => setIsCreditModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Target Invoice for Adjustment:</label>
-                <select
-                  value={creditInvoiceId}
-                  onChange={(e) => setCreditInvoiceId(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-mono font-medium"
-                >
-                  {invoices.map(inv => (
-                    <option key={inv.id} value={inv.id}>
-                      {inv.invoiceNumber} — {inv.customerName} (${inv.amount.toLocaleString()} | {inv.status})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Credit Amount ($ USD):</label>
-                <input
-                  type="number"
-                  min="1"
-                  value={creditAmount}
-                  onChange={(e) => setCreditAmount(parseFloat(e.target.value) || 0)}
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 font-mono font-bold text-base text-slate-900"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Commercial / Reconciling Reason:</label>
-                <textarea
-                  rows={2}
-                  value={creditReason}
-                  onChange={(e) => setCreditReason(e.target.value)}
-                  placeholder="Reason for concession or dispute adjustment..."
-                  className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs"
-                />
-              </div>
-
-              <div className="p-3 rounded-lg bg-purple-50 border border-purple-200 text-purple-900">
-                <span className="font-semibold block">Schema Invariant Notice:</span>
-                Credit notes are modeled strictly as invoices with negative monetary adjustment, preserving financial reconciliation traceability.
-              </div>
-            </div>
-
-            <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
-              <button
-                onClick={() => setIsCreditModalOpen(false)}
-                className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleIssueCredit}
-                className="px-4 py-1.5 text-xs font-semibold text-white bg-purple-600 hover:bg-purple-700 rounded-lg shadow-2xs"
-              >
-                Issue Credit Note
               </button>
             </div>
           </div>

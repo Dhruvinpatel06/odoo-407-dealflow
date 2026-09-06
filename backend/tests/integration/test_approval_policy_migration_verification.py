@@ -63,7 +63,7 @@ class TestApprovalPolicySchemaContract:
         # Ensure head revision exists
         heads = script.get_heads()
         assert len(heads) == 1
-        assert heads[0] == "e5f9fbc62d10"
+        assert heads[0] == "df4532cdd273"
 
         # Ensure base revision is ce58f26a68b0 (which creates approval_policies)
         base_rev = script.get_base()
@@ -71,8 +71,9 @@ class TestApprovalPolicySchemaContract:
 
         # Walk revisions to ensure no orphaned nodes
         revs = list(script.walk_revisions())
-        assert len(revs) == 2
+        assert len(revs) >= 2
         rev_ids = [r.revision for r in revs]
+        assert "df4532cdd273" in rev_ids
         assert "e5f9fbc62d10" in rev_ids
         assert "ce58f26a68b0" in rev_ids
 

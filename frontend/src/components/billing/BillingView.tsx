@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { StatusBadge } from '../common/StatusBadge';
+import { PaginationControls } from '../common/PaginationControls';
 
 export const BillingView: React.FC = () => {
   const { 
@@ -26,9 +27,16 @@ export const BillingView: React.FC = () => {
     showNotification 
   } = useApp();
 
+  const PAGE_SIZE = 4;
+  const [subPage, setSubPage] = useState<number>(1);
+  const [invPage, setInvPage] = useState<number>(1);
+
   const [paymentAmount, setPaymentAmount] = useState<number>(9504);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string>('inv-1002');
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+
+  const pagedSubscriptions = subscriptions.slice((subPage - 1) * PAGE_SIZE, subPage * PAGE_SIZE);
+  const pagedInvoices = invoices.slice((invPage - 1) * PAGE_SIZE, invPage * PAGE_SIZE);
 
   // Credit Note states
   const [isCreditModalOpen, setIsCreditModalOpen] = useState(false);
@@ -128,44 +136,58 @@ export const BillingView: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {subscriptions.map((sub) => (
-                <tr key={sub.id} className="hover:bg-slate-50 transition">
-                  <td className="py-3 px-4">
-                    <div className="font-semibold text-slate-900">{sub.productName}</div>
-                    <div className="text-[10px] text-slate-400 font-mono">Order: {sub.orderId.toUpperCase()}</div>
-                  </td>
-                  <td className="py-3 px-3">
-                    <span className="px-2 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 font-bold text-[10px]">
-                      {sub.interval}
-                    </span>
-                  </td>
-                  <td className="py-3 px-3 font-mono font-bold text-slate-800">
-                    {sub.quantity}
-                  </td>
-                  <td className="py-3 px-3 font-mono font-bold text-slate-900">
-                    ${sub.amount.toLocaleString()}/mo
-                  </td>
-                  <td className="py-3 px-3 font-mono text-slate-600">{sub.startDate}</td>
-                  <td className="py-3 px-3 font-mono text-slate-800 font-semibold">{sub.nextBillingDate}</td>
-                  <td className="py-3 px-3">
-                    <StatusBadge status={sub.status} />
-                  </td>
-                  <td className="py-3 px-4 text-right">
-                    <div className="flex items-center justify-end gap-1.5">
-                      <button
-                        onClick={() => modifySubscription(sub.id, 1)}
-                        className="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[11px] transition cursor-pointer"
-                        title="Add unit with mid-cycle proration"
-                      >
-                        +1 Unit (Prorate)
-                      </button>
-                    </div>
+              {pagedSubscriptions.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-6 text-center text-slate-400 text-xs">
+                    No recurring subscriptions found.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                pagedSubscriptions.map((sub) => (
+                  <tr key={sub.id} className="hover:bg-slate-50 transition">
+                    <td className="py-3 px-4">
+                      <div className="font-semibold text-slate-900">{sub.productName}</div>
+                      <div className="text-[10px] text-slate-400 font-mono">Order: {sub.orderId.toUpperCase()}</div>
+                    </td>
+                    <td className="py-3 px-3">
+                      <span className="px-2 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 font-bold text-[10px]">
+                        {sub.interval}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3 font-mono font-bold text-slate-800">
+                      {sub.quantity}
+                    </td>
+                    <td className="py-3 px-3 font-mono font-bold text-slate-900">
+                      ${sub.amount.toLocaleString()}/mo
+                    </td>
+                    <td className="py-3 px-3 font-mono text-slate-600">{sub.startDate}</td>
+                    <td className="py-3 px-3 font-mono text-slate-800 font-semibold">{sub.nextBillingDate}</td>
+                    <td className="py-3 px-3">
+                      <StatusBadge status={sub.status} />
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => modifySubscription(sub.id, 1)}
+                          className="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[11px] transition cursor-pointer"
+                          title="Add unit with mid-cycle proration"
+                        >
+                          +1 Unit (Prorate)
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
+        <PaginationControls
+          currentPage={subPage}
+          totalItems={subscriptions.length}
+          pageSize={PAGE_SIZE}
+          onPageChange={setSubPage}
+        />
       </div>
 
       {/* Section 2: Invoices & Payment Reconciliation */}
@@ -194,52 +216,66 @@ export const BillingView: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {invoices.map((inv) => {
-                const balance = inv.amount - inv.paidAmount;
-                return (
-                  <tr key={inv.id} className="hover:bg-slate-50 transition">
-                    <td className="py-3.5 px-4 font-mono font-bold text-blue-600">{inv.invoiceNumber}</td>
-                    <td className="py-3.5 px-4 font-semibold text-slate-900">{inv.customerName}</td>
-                    <td className="py-3.5 px-3">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        inv.type === 'ONE_TIME' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-purple-50 text-purple-700 border border-purple-200'
-                      }`}>
-                        {inv.type.replace('_', ' ')}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-3 font-mono font-bold text-slate-900">
-                      ${inv.amount.toLocaleString()}
-                    </td>
-                    <td className="py-3.5 px-3 font-mono font-semibold text-emerald-600">
-                      ${inv.paidAmount.toLocaleString()}
-                    </td>
-                    <td className="py-3.5 px-3 font-mono font-semibold text-slate-700">
-                      ${Math.max(0, balance).toLocaleString()}
-                    </td>
-                    <td className="py-3.5 px-3 font-mono text-slate-500">{inv.dueDate}</td>
-                    <td className="py-3.5 px-3">
-                      <StatusBadge status={inv.status} />
-                    </td>
-                    <td className="py-3.5 px-4 text-right">
-                      {balance > 0 && (
-                        <button
-                          onClick={() => {
-                            setSelectedInvoiceId(inv.id);
-                            setPaymentAmount(balance);
-                            setIsPaymentModalOpen(true);
-                          }}
-                          className="px-2.5 py-1 rounded bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 font-semibold text-xs transition cursor-pointer"
-                        >
-                          Pay
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+              {pagedInvoices.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="py-6 text-center text-slate-400 text-xs">
+                    No invoices or credit notes found.
+                  </td>
+                </tr>
+              ) : (
+                pagedInvoices.map((inv) => {
+                  const balance = inv.amount - inv.paidAmount;
+                  return (
+                    <tr key={inv.id} className="hover:bg-slate-50 transition">
+                      <td className="py-3.5 px-4 font-mono font-bold text-blue-600">{inv.invoiceNumber}</td>
+                      <td className="py-3.5 px-4 font-semibold text-slate-900">{inv.customerName}</td>
+                      <td className="py-3.5 px-3">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          inv.type === 'ONE_TIME' ? 'bg-blue-50 text-blue-700 border border-blue-200' : 'bg-purple-50 text-purple-700 border border-purple-200'
+                        }`}>
+                          {inv.type.replace('_', ' ')}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-3 font-mono font-bold text-slate-900">
+                        ${inv.amount.toLocaleString()}
+                      </td>
+                      <td className="py-3.5 px-3 font-mono font-semibold text-emerald-600">
+                        ${inv.paidAmount.toLocaleString()}
+                      </td>
+                      <td className="py-3.5 px-3 font-mono font-semibold text-slate-700">
+                        ${Math.max(0, balance).toLocaleString()}
+                      </td>
+                      <td className="py-3.5 px-3 font-mono text-slate-500">{inv.dueDate}</td>
+                      <td className="py-3.5 px-3">
+                        <StatusBadge status={inv.status} />
+                      </td>
+                      <td className="py-3.5 px-4 text-right">
+                        {balance > 0 && (
+                          <button
+                            onClick={() => {
+                              setSelectedInvoiceId(inv.id);
+                              setPaymentAmount(balance);
+                              setIsPaymentModalOpen(true);
+                            }}
+                            className="px-2.5 py-1 rounded bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 font-semibold text-xs transition cursor-pointer"
+                          >
+                            Pay
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
+        <PaginationControls
+          currentPage={invPage}
+          totalItems={invoices.length}
+          pageSize={PAGE_SIZE}
+          onPageChange={setInvPage}
+        />
       </div>
 
       {/* Record Payment Modal */}

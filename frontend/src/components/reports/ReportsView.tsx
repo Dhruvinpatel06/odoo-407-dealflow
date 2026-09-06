@@ -25,6 +25,7 @@ import {
   DollarSign
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { PaginationControls } from '../common/PaginationControls';
 
 export const ReportsView: React.FC = () => {
   const { showNotification, quotations } = useApp();
@@ -34,6 +35,8 @@ export const ReportsView: React.FC = () => {
   const [selectedTeam, setSelectedTeam] = useState('ALL');
   const [selectedApprovalStatus, setSelectedApprovalStatus] = useState('ALL');
   const [selectedCategory, setSelectedCategory] = useState('ALL');
+  const [productPage, setProductPage] = useState(1);
+  const PAGE_SIZE = 4;
 
   // Multiplier for periods
   const periodMultiplier = period === 'today' ? 0.15 : period === 'week' ? 0.45 : period === 'month' ? 1.0 : 2.8;
@@ -83,6 +86,8 @@ export const ReportsView: React.FC = () => {
     if (selectedCategory === 'SUBSCRIPTION' && p.category === 'Subscription') return true;
     return false;
   });
+
+  const pagedProducts = bestSellingProducts.slice((productPage - 1) * PAGE_SIZE, productPage * PAGE_SIZE);
 
   const approvalStatusDistribution = [
     { name: 'Auto Approved', value: 58, color: '#10b981' },
@@ -201,7 +206,10 @@ export const ReportsView: React.FC = () => {
 
           <select
             value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
+            onChange={(e) => {
+              setSelectedCategory(e.target.value);
+              setProductPage(1);
+            }}
             className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 font-medium cursor-pointer"
           >
             <option value="ALL">All Categories</option>
@@ -236,7 +244,7 @@ export const ReportsView: React.FC = () => {
                 <YAxis stroke="#64748b" fontSize={11} tickLine={false} tickFormatter={(v) => `$${v / 1000}k`} />
                 <Tooltip 
                   formatter={(val: any) => [`$${Number(val).toLocaleString()}`, 'Pipeline Value']}
-                  contentStyle={{ backgroundColor: '#1e293b', color: '#fff', borderRadius: '8px', fontSize: '11px' }}
+                  contentStyle={{ backgroundColor: '#ffffff', color: '#0f172a', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '11px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                 />
                 <Bar dataKey="amount" fill="#2563eb" radius={[6, 6, 0, 0]} />
               </BarChart>
@@ -268,7 +276,7 @@ export const ReportsView: React.FC = () => {
                 <YAxis domain={[25, 45]} stroke="#64748b" fontSize={11} tickLine={false} tickFormatter={(v) => `${v}%`} />
                 <Tooltip 
                   formatter={(val: any) => [`${val}%`, 'Blended Margin']}
-                  contentStyle={{ backgroundColor: '#1e293b', color: '#fff', borderRadius: '8px', fontSize: '11px' }}
+                  contentStyle={{ backgroundColor: '#ffffff', color: '#0f172a', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '11px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                 />
                 <Area type="monotone" dataKey="margin" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#marginGrad)" />
               </AreaChart>
@@ -297,7 +305,7 @@ export const ReportsView: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {bestSellingProducts.map((p, i) => (
+                {pagedProducts.map((p, i) => (
                   <tr key={i} className="hover:bg-slate-50">
                     <td className="py-3 px-4 font-semibold text-slate-900">{p.name}</td>
                     <td className="py-3 px-3">
@@ -314,6 +322,12 @@ export const ReportsView: React.FC = () => {
               </tbody>
             </table>
           </div>
+          <PaginationControls
+            currentPage={productPage}
+            totalItems={bestSellingProducts.length}
+            pageSize={PAGE_SIZE}
+            onPageChange={setProductPage}
+          />
         </div>
 
         {/* Approval Status Distribution (5 Cols) */}
@@ -341,7 +355,7 @@ export const ReportsView: React.FC = () => {
                 </Pie>
                 <Tooltip 
                   formatter={(val: any) => [`${val}%`, 'Volume']}
-                  contentStyle={{ backgroundColor: '#1e293b', color: '#fff', borderRadius: '8px', fontSize: '11px' }}
+                  contentStyle={{ backgroundColor: '#ffffff', color: '#0f172a', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '11px', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                 />
               </PieChart>
             </ResponsiveContainer>

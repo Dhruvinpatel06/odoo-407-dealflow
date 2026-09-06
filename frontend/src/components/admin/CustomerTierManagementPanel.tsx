@@ -23,9 +23,12 @@ import {
   CustomerTierCreateRequest,
   CustomerTierUpdateRequest
 } from '../../types';
+import { PaginationControls } from '../common/PaginationControls';
 
 export const CustomerTierManagementPanel: React.FC = () => {
   const { showNotification } = useApp();
+  const [page, setPage] = useState<number>(1);
+  const PAGE_SIZE = 4;
 
   // Queries & Mutations
   const {
@@ -271,74 +274,82 @@ export const CustomerTierManagementPanel: React.FC = () => {
             No customer tiers configured. Click "Add Customer Tier" to register one.
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-semibold text-[10px]">
-                  <th className="py-3 px-4">Tier Name</th>
-                  <th className="py-3 px-3">Default Discount Limit</th>
-                  <th className="py-3 px-4">Description</th>
-                  <th className="py-3 px-3">Status</th>
-                  <th className="py-3 px-3">Created</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {tiers.map((tier) => (
-                  <tr key={tier.id} className="hover:bg-slate-50/60 transition">
-                    <td className="py-3 px-4 font-bold text-slate-900">
-                      <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-800 border border-slate-200 text-[11px] font-mono">
-                        {tier.name}
-                      </span>
-                    </td>
-                    <td className="py-3 px-3">
-                      <span className="font-mono font-bold text-blue-600">
-                        {Number(tier.default_discount_limit)}%
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-slate-600 text-[11px] max-w-xs truncate">
-                      {tier.description || '—'}
-                    </td>
-                    <td className="py-3 px-3">
-                      <span
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border ${
-                          tier.is_active
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : 'bg-slate-100 text-slate-500 border-slate-200'
-                        }`}
-                      >
-                        <span className={`w-1.5 h-1.5 rounded-full ${tier.is_active ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
-                        {tier.is_active ? 'Active' : 'Inactive'}
-                      </span>
-                    </td>
-                    <td className="py-3 px-3 text-slate-400 font-mono text-[11px]">
-                      {tier.created_at ? new Date(tier.created_at).toLocaleDateString() : '—'}
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => openEditModal(tier)}
-                          className="px-2.5 py-1 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded transition cursor-pointer font-semibold text-xs flex items-center gap-1"
-                        >
-                          <Edit2 className="w-3 h-3" />
-                          <span>Edit</span>
-                        </button>
-                        {tier.is_active && (
-                          <button
-                            onClick={() => handleDeactivate(tier)}
-                            className="px-2.5 py-1 text-rose-600 hover:bg-rose-50 rounded transition cursor-pointer font-semibold text-xs flex items-center gap-1"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                            <span>Deactivate</span>
-                          </button>
-                        )}
-                      </div>
-                    </td>
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-semibold text-[10px]">
+                    <th className="py-3 px-4">Tier Name</th>
+                    <th className="py-3 px-3">Default Discount Limit</th>
+                    <th className="py-3 px-4">Description</th>
+                    <th className="py-3 px-3">Status</th>
+                    <th className="py-3 px-3">Created</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {tiers.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((tier) => (
+                    <tr key={tier.id} className="hover:bg-slate-50/60 transition">
+                      <td className="py-3 px-4 font-bold text-slate-900">
+                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-800 border border-slate-200 text-[11px] font-mono">
+                          {tier.name}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className="font-mono font-bold text-blue-600">
+                          {Number(tier.default_discount_limit)}%
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-slate-600 text-[11px] max-w-xs truncate">
+                        {tier.description || '—'}
+                      </td>
+                      <td className="py-3 px-3">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border ${
+                            tier.is_active
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-slate-100 text-slate-500 border-slate-200'
+                          }`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${tier.is_active ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
+                          {tier.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 text-slate-400 font-mono text-[11px]">
+                        {tier.created_at ? new Date(tier.created_at).toLocaleDateString() : '—'}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => openEditModal(tier)}
+                            className="px-2.5 py-1 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded transition cursor-pointer font-semibold text-xs flex items-center gap-1"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                            <span>Edit</span>
+                          </button>
+                          {tier.is_active && (
+                            <button
+                              onClick={() => handleDeactivate(tier)}
+                              className="px-2.5 py-1 text-rose-600 hover:bg-rose-50 rounded transition cursor-pointer font-semibold text-xs flex items-center gap-1"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              <span>Deactivate</span>
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <PaginationControls
+              currentPage={page}
+              totalItems={tiers.length}
+              pageSize={PAGE_SIZE}
+              onPageChange={setPage}
+            />
+          </>
         )}
       </div>
 

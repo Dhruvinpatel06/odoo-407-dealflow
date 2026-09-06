@@ -18,6 +18,7 @@ import { useApp } from '../../context/AppContext';
 import { StatusBadge } from '../common/StatusBadge';
 import { RiskBadge } from '../common/RiskBadge';
 import { AccessRestrictedView } from '../common/AccessRestrictedView';
+import { PaginationControls } from '../common/PaginationControls';
 import { ShieldAlert, Lock } from 'lucide-react';
 
 export const ApprovalCenter: React.FC = () => {
@@ -45,8 +46,11 @@ export const ApprovalCenter: React.FC = () => {
 
   const [selectedApprovalId, setSelectedApprovalId] = useState<string>(approvals[0]?.id || '');
   const [decisionReason, setDecisionReason] = useState<string>('');
+  const [page, setPage] = useState<number>(1);
+  const PAGE_SIZE = 4;
 
-  const activeApproval = approvals.find(a => a.id === selectedApprovalId) || approvals[0];
+  const pagedApprovals = approvals.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const activeApproval = approvals.find(a => a.id === selectedApprovalId) || pagedApprovals[0] || approvals[0];
   const relatedQuote = quotations.find(q => q.id === activeApproval?.quotationId);
 
   // RBAC Permission check for approval actions:
@@ -103,7 +107,7 @@ export const ApprovalCenter: React.FC = () => {
             </div>
 
             <div className="space-y-2.5">
-              {approvals.map((app) => {
+              {pagedApprovals.map((app) => {
                 const isSelected = app.id === selectedApprovalId;
                 return (
                   <div
@@ -137,6 +141,14 @@ export const ApprovalCenter: React.FC = () => {
                 );
               })}
             </div>
+
+            <PaginationControls
+              currentPage={page}
+              totalItems={approvals.length}
+              pageSize={PAGE_SIZE}
+              onPageChange={setPage}
+              className="mt-3 rounded-lg border border-gray-100"
+            />
           </div>
         </div>
 

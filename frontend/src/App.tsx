@@ -52,16 +52,16 @@ const AppContent: React.FC = () => {
         {/* Global Toast Notification */}
         {notification && (
           <div className="fixed bottom-5 right-5 z-50 animate-in fade-in slide-in-from-bottom-3 duration-200">
-            <div className={`flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-lg text-xs font-semibold border ${
-              notification.type === 'success' ? 'bg-emerald-900 text-emerald-100 border-emerald-700' :
-              notification.type === 'error' ? 'bg-rose-900 text-rose-100 border-rose-700' :
-              notification.type === 'warning' ? 'bg-amber-900 text-amber-100 border-amber-700' :
-              'bg-[#111827] text-white border-slate-700'
+            <div className={`flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-xl text-xs font-semibold border ${
+              notification.type === 'success' ? 'bg-white text-emerald-800 border-emerald-200' :
+              notification.type === 'error' ? 'bg-white text-rose-800 border-rose-200' :
+              notification.type === 'warning' ? 'bg-white text-amber-800 border-amber-200' :
+              'bg-white text-slate-800 border-slate-200'
             }`}>
-              {notification.type === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
-              {notification.type === 'error' && <AlertTriangle className="w-4 h-4 text-rose-400" />}
-              {notification.type === 'warning' && <AlertTriangle className="w-4 h-4 text-amber-400" />}
-              {notification.type === 'info' && <Info className="w-4 h-4 text-blue-400" />}
+              {notification.type === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
+              {notification.type === 'error' && <AlertTriangle className="w-4 h-4 text-rose-600" />}
+              {notification.type === 'warning' && <AlertTriangle className="w-4 h-4 text-amber-600" />}
+              {notification.type === 'info' && <Info className="w-4 h-4 text-blue-600" />}
               <span>{notification.message}</span>
             </div>
           </div>
@@ -244,16 +244,16 @@ const AppContent: React.FC = () => {
       {/* Global Toast Notification */}
       {notification && (
         <div className="fixed bottom-5 right-5 z-50 animate-in fade-in slide-in-from-bottom-3 duration-200">
-          <div className={`flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-lg text-xs font-semibold border ${
-            notification.type === 'success' ? 'bg-emerald-900 text-emerald-100 border-emerald-700' :
-            notification.type === 'error' ? 'bg-rose-900 text-rose-100 border-rose-700' :
-            notification.type === 'warning' ? 'bg-amber-900 text-amber-100 border-amber-700' :
-            'bg-slate-900 text-slate-100 border-slate-700'
+          <div className={`flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-xl text-xs font-semibold border ${
+            notification.type === 'success' ? 'bg-white text-emerald-800 border-emerald-200' :
+            notification.type === 'error' ? 'bg-white text-rose-800 border-rose-200' :
+            notification.type === 'warning' ? 'bg-white text-amber-800 border-amber-200' :
+            'bg-white text-slate-800 border-slate-200'
           }`}>
-            {notification.type === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
-            {notification.type === 'error' && <AlertTriangle className="w-4 h-4 text-rose-400" />}
-            {notification.type === 'warning' && <AlertTriangle className="w-4 h-4 text-amber-400" />}
-            {notification.type === 'info' && <Info className="w-4 h-4 text-blue-400" />}
+            {notification.type === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
+            {notification.type === 'error' && <AlertTriangle className="w-4 h-4 text-rose-600" />}
+            {notification.type === 'warning' && <AlertTriangle className="w-4 h-4 text-amber-600" />}
+            {notification.type === 'info' && <Info className="w-4 h-4 text-blue-600" />}
             <span>{notification.message}</span>
           </div>
         </div>

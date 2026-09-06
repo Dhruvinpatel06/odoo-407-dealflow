@@ -30,11 +30,19 @@ import {
 } from '../../hooks/useBackendData';
 import { CustomerResponse, CustomerCreateRequest, CustomerUpdateRequest } from '../../types';
 import { useApp } from '../../context/AppContext';
+import { PaginationControls } from '../common/PaginationControls';
 
 export const CustomerManagementPanel: React.FC = () => {
   const { showNotification, refreshBackendCustomers } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTierFilter, setSelectedTierFilter] = useState('');
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 4;
+
+  // History Drawer Pagination
+  const [quotePage, setQuotePage] = useState(1);
+  const [orderPage, setOrderPage] = useState(1);
+  const [subPage, setSubPage] = useState(1);
 
   // Queries
   const {
@@ -210,7 +218,10 @@ export const CustomerManagementPanel: React.FC = () => {
               type="text"
               placeholder="Search customers by name or contact..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setPage(1);
+              }}
               className="w-full pl-9 pr-3 py-1.5 text-xs border border-slate-300 rounded-lg bg-slate-50 focus:bg-white focus:outline-hidden focus:ring-1 focus:ring-blue-500"
             />
           </div>
@@ -218,7 +229,10 @@ export const CustomerManagementPanel: React.FC = () => {
           {/* Tier Filter */}
           <select
             value={selectedTierFilter}
-            onChange={(e) => setSelectedTierFilter(e.target.value)}
+            onChange={(e) => {
+              setSelectedTierFilter(e.target.value);
+              setPage(1);
+            }}
             className="text-xs border border-slate-300 rounded-lg bg-slate-50 px-3 py-1.5 focus:bg-white focus:outline-hidden"
           >
             <option value="">All Customer Tiers</option>
@@ -271,96 +285,109 @@ export const CustomerManagementPanel: React.FC = () => {
             <p>No customers found matching the search filter.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-semibold text-[10px]">
-                  <th className="py-3 px-4">Customer / Organization</th>
-                  <th className="py-3 px-3">Tier Assignment</th>
-                  <th className="py-3 px-3">Contact</th>
-                  <th className="py-3 px-3">Address</th>
-                  <th className="py-3 px-3 text-center">Status</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {customers.map((c) => {
-                  const tierName = tierMap.get(c.customer_tier_id) || 'STANDARD';
-                  return (
-                    <tr key={c.id} className="hover:bg-slate-50/60 transition">
-                      <td className="py-3 px-4">
-                        <div className="font-bold text-slate-900">{c.name}</div>
-                        <div className="text-[10px] text-slate-400 font-mono">ID: {c.id.slice(0, 8)}...</div>
-                      </td>
-                      <td className="py-3 px-3">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-blue-50 text-blue-700 border-blue-200 font-mono">
-                          <ShieldCheck className="w-3 h-3 text-blue-600" />
-                          {tierName}
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 text-slate-600 space-y-0.5">
-                        {c.email && (
-                          <div className="flex items-center gap-1 text-[11px]">
-                            <Mail className="w-3 h-3 text-slate-400" />
-                            <span>{c.email}</span>
-                          </div>
-                        )}
-                        {c.phone && (
-                          <div className="flex items-center gap-1 text-[11px]">
-                            <Phone className="w-3 h-3 text-slate-400" />
-                            <span>{c.phone}</span>
-                          </div>
-                        )}
-                        {!c.email && !c.phone && <span className="text-slate-400 italic">No contact</span>}
-                      </td>
-                      <td className="py-3 px-3 text-slate-500 text-[11px] max-w-xs truncate">
-                        {c.billing_address || c.shipping_address ? (
-                          <div className="flex items-center gap-1 truncate" title={c.billing_address || c.shipping_address || ''}>
-                            <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
-                            <span className="truncate">{c.billing_address || c.shipping_address}</span>
-                          </div>
-                        ) : (
-                          <span className="text-slate-400 italic">None</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-3 text-center">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
-                          c.is_active
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : 'bg-rose-50 text-rose-700 border-rose-200'
-                        }`}>
-                          {c.is_active ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-right space-x-1">
-                        <button
-                          onClick={() => setSelectedCustomerForHistory(c)}
-                          title="Inspect Quotations, Orders, Subscriptions"
-                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-md transition cursor-pointer"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleOpenEdit(c)}
-                          title="Edit Customer"
-                          className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-md transition cursor-pointer"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(c)}
-                          title="Deactivate Customer"
-                          className="p-1.5 text-red-600 hover:bg-red-50 rounded-md transition cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-semibold text-[10px]">
+                    <th className="py-3 px-4">Customer / Organization</th>
+                    <th className="py-3 px-3">Tier Assignment</th>
+                    <th className="py-3 px-3">Contact</th>
+                    <th className="py-3 px-3">Address</th>
+                    <th className="py-3 px-3 text-center">Status</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {customers.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).map((c) => {
+                    const tierName = tierMap.get(c.customer_tier_id) || 'STANDARD';
+                    return (
+                      <tr key={c.id} className="hover:bg-slate-50/60 transition">
+                        <td className="py-3 px-4">
+                          <div className="font-bold text-slate-900">{c.name}</div>
+                          <div className="text-[10px] text-slate-400 font-mono">ID: {c.id.slice(0, 8)}...</div>
+                        </td>
+                        <td className="py-3 px-3">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-blue-50 text-blue-700 border-blue-200 font-mono">
+                            <ShieldCheck className="w-3 h-3 text-blue-600" />
+                            {tierName}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-slate-600 space-y-0.5">
+                          {c.email && (
+                            <div className="flex items-center gap-1 text-[11px]">
+                              <Mail className="w-3 h-3 text-slate-400" />
+                              <span>{c.email}</span>
+                            </div>
+                          )}
+                          {c.phone && (
+                            <div className="flex items-center gap-1 text-[11px]">
+                              <Phone className="w-3 h-3 text-slate-400" />
+                              <span>{c.phone}</span>
+                            </div>
+                          )}
+                          {!c.email && !c.phone && <span className="text-slate-400 italic">No contact</span>}
+                        </td>
+                        <td className="py-3 px-3 text-slate-500 text-[11px] max-w-xs truncate">
+                          {c.billing_address || c.shipping_address ? (
+                            <div className="flex items-center gap-1 truncate" title={c.billing_address || c.shipping_address || ''}>
+                              <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
+                              <span className="truncate">{c.billing_address || c.shipping_address}</span>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 italic">None</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                            c.is_active
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : 'bg-rose-50 text-rose-700 border-rose-200'
+                          }`}>
+                            {c.is_active ? 'Active' : 'Inactive'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-right space-x-1">
+                          <button
+                            onClick={() => {
+                              setSelectedCustomerForHistory(c);
+                              setQuotePage(1);
+                              setOrderPage(1);
+                              setSubPage(1);
+                            }}
+                            title="Inspect Quotations, Orders, Subscriptions"
+                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-md transition cursor-pointer"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleOpenEdit(c)}
+                            title="Edit Customer"
+                            className="p-1.5 text-slate-600 hover:bg-slate-100 rounded-md transition cursor-pointer"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(c)}
+                            title="Deactivate Customer"
+                            className="p-1.5 text-red-600 hover:bg-red-50 rounded-md transition cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <PaginationControls
+              currentPage={page}
+              totalItems={customers.length}
+              pageSize={PAGE_SIZE}
+              onPageChange={setPage}
+            />
+          </>
         )}
       </div>
 
@@ -685,32 +712,40 @@ export const CustomerManagementPanel: React.FC = () => {
                   ) : customerQuotes.length === 0 ? (
                     <p className="text-center text-slate-400 py-8 italic">No quotations found for this account.</p>
                   ) : (
-                    <table className="w-full text-left">
-                      <thead>
-                        <tr className="border-b border-slate-200 text-slate-400 text-[10px] uppercase">
-                          <th className="py-2">Quote #</th>
-                          <th className="py-2">Status</th>
-                          <th className="py-2 text-right">Total</th>
-                          <th className="py-2 text-right">Margin %</th>
-                          <th className="py-2 text-right">Risk</th>
-                          <th className="py-2 text-right">Created</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 font-mono">
-                        {customerQuotes.map(q => (
-                          <tr key={q.id} className="hover:bg-slate-50">
-                            <td className="py-2.5 font-bold text-blue-700">{q.quotation_number}</td>
-                            <td className="py-2.5"><span className="text-[10px] px-2 py-0.5 rounded bg-slate-100">{q.status}</span></td>
-                            <td className="py-2.5 text-right font-bold text-slate-900">${Number(q.total_amount).toLocaleString()}</td>
-                            <td className="py-2.5 text-right text-emerald-700">{Number(q.margin_percent)}%</td>
-                            <td className="py-2.5 text-right">{q.risk_score}</td>
-                            <td className="py-2.5 text-right text-slate-400 text-[11px] font-sans">
-                              {new Date(q.created_at).toLocaleDateString()}
-                            </td>
+                    <>
+                      <table className="w-full text-left">
+                        <thead>
+                          <tr className="border-b border-slate-200 text-slate-400 text-[10px] uppercase">
+                            <th className="py-2">Quote #</th>
+                            <th className="py-2">Status</th>
+                            <th className="py-2 text-right">Total</th>
+                            <th className="py-2 text-right">Margin %</th>
+                            <th className="py-2 text-right">Risk</th>
+                            <th className="py-2 text-right">Created</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-mono">
+                          {customerQuotes.slice((quotePage - 1) * PAGE_SIZE, quotePage * PAGE_SIZE).map(q => (
+                            <tr key={q.id} className="hover:bg-slate-50">
+                              <td className="py-2.5 font-bold text-blue-700">{q.quotation_number}</td>
+                              <td className="py-2.5"><span className="text-[10px] px-2 py-0.5 rounded bg-slate-100">{q.status}</span></td>
+                              <td className="py-2.5 text-right font-bold text-slate-900">${Number(q.total_amount).toLocaleString()}</td>
+                              <td className="py-2.5 text-right text-emerald-700">{Number(q.margin_percent)}%</td>
+                              <td className="py-2.5 text-right">{q.risk_score}</td>
+                              <td className="py-2.5 text-right text-slate-400 text-[11px] font-sans">
+                                {new Date(q.created_at).toLocaleDateString()}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <PaginationControls
+                        currentPage={quotePage}
+                        totalItems={customerQuotes.length}
+                        pageSize={PAGE_SIZE}
+                        onPageChange={setQuotePage}
+                      />
+                    </>
                   )}
                 </div>
               )}
@@ -725,28 +760,36 @@ export const CustomerManagementPanel: React.FC = () => {
                   ) : customerOrders.length === 0 ? (
                     <p className="text-center text-slate-400 py-8 italic">No fulfilled orders recorded for this account.</p>
                   ) : (
-                    <table className="w-full text-left">
-                      <thead>
-                        <tr className="border-b border-slate-200 text-slate-400 text-[10px] uppercase">
-                          <th className="py-2">Order #</th>
-                          <th className="py-2">Status</th>
-                          <th className="py-2 text-right">Total Amount</th>
-                          <th className="py-2 text-right">Created</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 font-mono">
-                        {customerOrders.map(o => (
-                          <tr key={o.id} className="hover:bg-slate-50">
-                            <td className="py-2.5 font-bold text-purple-700">{o.order_number}</td>
-                            <td className="py-2.5"><span className="text-[10px] px-2 py-0.5 rounded bg-purple-50 text-purple-700">{o.status}</span></td>
-                            <td className="py-2.5 text-right font-bold text-slate-900">${Number(o.total_amount).toLocaleString()}</td>
-                            <td className="py-2.5 text-right text-slate-400 text-[11px] font-sans">
-                              {new Date(o.created_at).toLocaleDateString()}
-                            </td>
+                    <>
+                      <table className="w-full text-left">
+                        <thead>
+                          <tr className="border-b border-slate-200 text-slate-400 text-[10px] uppercase">
+                            <th className="py-2">Order #</th>
+                            <th className="py-2">Status</th>
+                            <th className="py-2 text-right">Total Amount</th>
+                            <th className="py-2 text-right">Created</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-mono">
+                          {customerOrders.slice((orderPage - 1) * PAGE_SIZE, orderPage * PAGE_SIZE).map(o => (
+                            <tr key={o.id} className="hover:bg-slate-50">
+                              <td className="py-2.5 font-bold text-purple-700">{o.order_number}</td>
+                              <td className="py-2.5"><span className="text-[10px] px-2 py-0.5 rounded bg-purple-50 text-purple-700">{o.status}</span></td>
+                              <td className="py-2.5 text-right font-bold text-slate-900">${Number(o.total_amount).toLocaleString()}</td>
+                              <td className="py-2.5 text-right text-slate-400 text-[11px] font-sans">
+                                {new Date(o.created_at).toLocaleDateString()}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <PaginationControls
+                        currentPage={orderPage}
+                        totalItems={customerOrders.length}
+                        pageSize={PAGE_SIZE}
+                        onPageChange={setOrderPage}
+                      />
+                    </>
                   )}
                 </div>
               )}
@@ -761,28 +804,36 @@ export const CustomerManagementPanel: React.FC = () => {
                   ) : customerSubs.length === 0 ? (
                     <p className="text-center text-slate-400 py-8 italic">No active recurring subscriptions found.</p>
                   ) : (
-                    <table className="w-full text-left">
-                      <thead>
-                        <tr className="border-b border-slate-200 text-slate-400 text-[10px] uppercase">
-                          <th className="py-2">Plan ID</th>
-                          <th className="py-2">Status</th>
-                          <th className="py-2 text-center">Qty</th>
-                          <th className="py-2 text-right">Rate</th>
-                          <th className="py-2 text-right">Next Billing</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 font-mono">
-                        {customerSubs.map(s => (
-                          <tr key={s.id} className="hover:bg-slate-50">
-                            <td className="py-2.5 text-slate-800">{s.plan_id.slice(0, 8)}...</td>
-                            <td className="py-2.5"><span className="text-[10px] px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">{s.status}</span></td>
-                            <td className="py-2.5 text-center">{s.quantity}</td>
-                            <td className="py-2.5 text-right font-bold">${Number(s.unit_price).toLocaleString()}</td>
-                            <td className="py-2.5 text-right text-slate-500">{s.next_billing_date}</td>
+                    <>
+                      <table className="w-full text-left">
+                        <thead>
+                          <tr className="border-b border-slate-200 text-slate-400 text-[10px] uppercase">
+                            <th className="py-2">Plan ID</th>
+                            <th className="py-2">Status</th>
+                            <th className="py-2 text-center">Qty</th>
+                            <th className="py-2 text-right">Rate</th>
+                            <th className="py-2 text-right">Next Billing</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-mono">
+                          {customerSubs.slice((subPage - 1) * PAGE_SIZE, subPage * PAGE_SIZE).map(s => (
+                            <tr key={s.id} className="hover:bg-slate-50">
+                              <td className="py-2.5 text-slate-800">{s.plan_id.slice(0, 8)}...</td>
+                              <td className="py-2.5"><span className="text-[10px] px-2 py-0.5 rounded bg-emerald-50 text-emerald-700">{s.status}</span></td>
+                              <td className="py-2.5 text-center">{s.quantity}</td>
+                              <td className="py-2.5 text-right font-bold">${Number(s.unit_price).toLocaleString()}</td>
+                              <td className="py-2.5 text-right text-slate-500">{s.next_billing_date}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <PaginationControls
+                        currentPage={subPage}
+                        totalItems={customerSubs.length}
+                        pageSize={PAGE_SIZE}
+                        onPageChange={setSubPage}
+                      />
+                    </>
                   )}
                 </div>
               )}

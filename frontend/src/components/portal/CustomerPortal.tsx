@@ -62,7 +62,7 @@ export const CustomerPortal: React.FC = () => {
             onClick={() => {
               setCurrentPage('login');
             }}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-800 text-white text-xs font-semibold hover:bg-slate-900 transition cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50 transition cursor-pointer"
           >
             <LogOut className="w-4 h-4" />
             <span>Sign Out</span>

@@ -31,6 +31,7 @@ import { UserResponse, AdminCreateUserRequest } from '../../types';
 import { CustomerManagementPanel } from './CustomerManagementPanel';
 import { CustomerTierManagementPanel } from './CustomerTierManagementPanel';
 import { useProductsQuery } from '../../hooks/useBackendData';
+import { PaginationControls } from '../common/PaginationControls';
 
 type AdminTab = 'DISCOUNTS' | 'CUSTOMERS' | 'CUSTOMER_TIERS' | 'CATALOG' | 'WAREHOUSES' | 'SUBSCRIPTIONS' | 'RISK' | 'USERS';
 
@@ -134,6 +135,12 @@ export const AdminConfigView: React.FC = () => {
   const [isUsersLoading, setIsUsersLoading] = useState<boolean>(false);
   const [usersError, setUsersError] = useState<string | null>(null);
   const [isAddUserOpen, setIsAddUserOpen] = useState<boolean>(false);
+
+  // Pagination states
+  const [catalogPage, setCatalogPage] = useState(1);
+  const [subPage, setSubPage] = useState(1);
+  const [userPage, setUserPage] = useState(1);
+  const PAGE_SIZE = 4;
 
   // Add User Form State
   const [newUserName, setNewUserName] = useState<string>('');
@@ -661,7 +668,7 @@ export const AdminConfigView: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {mockProducts.map((p) => {
+              {mockProducts.slice((catalogPage - 1) * PAGE_SIZE, catalogPage * PAGE_SIZE).map((p) => {
                 const margin = (((p.unitPrice - p.unitCost) / p.unitPrice) * 100).toFixed(1);
                 return (
                   <tr key={p.id} className="hover:bg-slate-50/60">
@@ -683,6 +690,12 @@ export const AdminConfigView: React.FC = () => {
               })}
             </tbody>
           </table>
+          <PaginationControls
+            currentPage={catalogPage}
+            totalItems={mockProducts.length}
+            pageSize={PAGE_SIZE}
+            onPageChange={setCatalogPage}
+          />
         </div>
       )}
 
@@ -729,7 +742,7 @@ export const AdminConfigView: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {subscriptions.map(s => (
+              {subscriptions.slice((subPage - 1) * PAGE_SIZE, subPage * PAGE_SIZE).map(s => (
                 <tr key={s.id}>
                   <td className="py-3 px-4 font-bold text-slate-900">{s.productName}</td>
                   <td className="py-3 px-3 font-mono">{s.interval}</td>
@@ -745,6 +758,12 @@ export const AdminConfigView: React.FC = () => {
               ))}
             </tbody>
           </table>
+          <PaginationControls
+            currentPage={subPage}
+            totalItems={subscriptions.length}
+            pageSize={PAGE_SIZE}
+            onPageChange={setSubPage}
+          />
         </div>
       )}
 
@@ -1086,7 +1105,7 @@ export const AdminConfigView: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {usersList.map((u) => {
+                    {usersList.slice((userPage - 1) * PAGE_SIZE, userPage * PAGE_SIZE).map((u) => {
                       const roleBadgeColor = 
                         u.role === 'ADMIN' ? 'bg-amber-50 text-amber-700 border-amber-200' :
                         u.role === 'SALES_MANAGER' ? 'bg-purple-50 text-purple-700 border-purple-200' :
@@ -1142,6 +1161,12 @@ export const AdminConfigView: React.FC = () => {
                 </table>
               </div>
             )}
+            <PaginationControls
+              currentPage={userPage}
+              totalItems={usersList.length}
+              pageSize={PAGE_SIZE}
+              onPageChange={setUserPage}
+            />
           </div>
 
           {/* Admin Reset Password Modal */}

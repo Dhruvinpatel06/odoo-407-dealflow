@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { StatusBadge } from '../common/StatusBadge';
+import { PaginationControls } from '../common/PaginationControls';
 
 export const DealHealthView: React.FC = () => {
   const { 
@@ -26,6 +27,8 @@ export const DealHealthView: React.FC = () => {
     quotations 
   } = useApp();
 
+  const PAGE_SIZE = 4;
+  const [page, setPage] = useState<number>(1);
   const [filterType, setFilterType] = useState<string>('ALL');
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
 
@@ -34,6 +37,8 @@ export const DealHealthView: React.FC = () => {
     const matchesStatus = filterStatus === 'ALL' || a.status === filterStatus;
     return matchesType && matchesStatus;
   });
+
+  const pagedAlerts = filteredAlerts.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const healthyQuotes = quotations.filter(q => q.riskStatus === 'HEALTHY');
   const warningQuotes = quotations.filter(q => q.riskStatus === 'MODERATE');
@@ -93,7 +98,7 @@ export const DealHealthView: React.FC = () => {
 
           <select
             value={filterType}
-            onChange={(e) => setFilterType(e.target.value)}
+            onChange={(e) => { setFilterType(e.target.value); setPage(1); }}
             className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-medium"
           >
             <option value="ALL">All Signal Types</option>
@@ -104,7 +109,7 @@ export const DealHealthView: React.FC = () => {
 
           <select
             value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
+            onChange={(e) => { setFilterStatus(e.target.value); setPage(1); }}
             className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-medium"
           >
             <option value="ALL">All Alert Statuses</option>
@@ -135,96 +140,110 @@ export const DealHealthView: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredAlerts.map((alt) => {
-                const isHigh = alt.severity === 'HIGH';
-                return (
-                  <tr key={alt.id} className="hover:bg-slate-50 transition">
-                    {/* Severity & Type */}
-                    <td className="py-3.5 px-4">
-                      <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${isHigh ? 'bg-rose-500' : 'bg-amber-500'}`} />
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                          isHigh ? 'bg-rose-50 text-rose-700 border border-rose-200' : 'bg-amber-50 text-amber-700 border border-amber-200'
-                        }`}>
-                          {alt.type.replace('_', ' ')}
-                        </span>
-                      </div>
-                    </td>
+              {pagedAlerts.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-6 text-center text-slate-400 text-xs">
+                    No active deal signals found matching filters.
+                  </td>
+                </tr>
+              ) : (
+                pagedAlerts.map((alt) => {
+                  const isHigh = alt.severity === 'HIGH';
+                  return (
+                    <tr key={alt.id} className="hover:bg-slate-50 transition">
+                      {/* Severity & Type */}
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-2 h-2 rounded-full ${isHigh ? 'bg-rose-500' : 'bg-amber-500'}`} />
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            isHigh ? 'bg-rose-50 text-rose-700 border border-rose-200' : 'bg-amber-50 text-amber-700 border border-amber-200'
+                          }`}>
+                            {alt.type.replace('_', ' ')}
+                          </span>
+                        </div>
+                      </td>
 
-                    {/* Quote & Customer */}
-                    <td className="py-3.5 px-4">
-                      <button
-                        onClick={() => {
-                          setSelectedQuoteId(alt.quotationId);
-                          setCurrentPage('quote-builder');
-                        }}
-                        className="font-mono font-bold text-blue-600 hover:underline block text-left"
-                      >
-                        {alt.quoteNumber}
-                      </button>
-                      <span className="font-semibold text-slate-900">{alt.customerName}</span>
-                    </td>
+                      {/* Quote & Customer */}
+                      <td className="py-3.5 px-4">
+                        <button
+                          onClick={() => {
+                            setSelectedQuoteId(alt.quotationId);
+                            setCurrentPage('quote-builder');
+                          }}
+                          className="font-mono font-bold text-blue-600 hover:underline block text-left cursor-pointer"
+                        >
+                          {alt.quoteNumber}
+                        </button>
+                        <span className="font-semibold text-slate-900">{alt.customerName}</span>
+                      </td>
 
-                    {/* Root Cause Reason */}
-                    <td className="py-3.5 px-4 max-w-sm">
-                      <p className="text-slate-700 leading-snug">{alt.reason}</p>
-                      <div className="text-[10px] text-blue-600 mt-1 font-medium">
-                        Recommendation: {alt.suggestedAction}
-                      </div>
-                    </td>
+                      {/* Root Cause Reason */}
+                      <td className="py-3.5 px-4 max-w-sm">
+                        <p className="text-slate-700 leading-snug">{alt.reason}</p>
+                        <div className="text-[10px] text-blue-600 mt-1 font-medium">
+                          Recommendation: {alt.suggestedAction}
+                        </div>
+                      </td>
 
-                    {/* Owner */}
-                    <td className="py-3.5 px-3 text-slate-700 font-medium">
-                      {alt.ownerName}
-                    </td>
+                      {/* Owner */}
+                      <td className="py-3.5 px-3 text-slate-700 font-medium">
+                        {alt.ownerName}
+                      </td>
 
-                    {/* Age */}
-                    <td className="py-3.5 px-3 font-mono text-slate-500">
-                      {alt.ageDays} days
-                    </td>
+                      {/* Age */}
+                      <td className="py-3.5 px-3 font-mono text-slate-500">
+                        {alt.ageDays} days
+                      </td>
 
-                    {/* Status */}
-                    <td className="py-3.5 px-3">
-                      <StatusBadge status={alt.status} />
-                    </td>
+                      {/* Status */}
+                      <td className="py-3.5 px-3">
+                        <StatusBadge status={alt.status} />
+                      </td>
 
-                    {/* Actions */}
-                    <td className="py-3.5 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        {alt.status === 'OPEN' && (
-                          <>
+                      {/* Actions */}
+                      <td className="py-3.5 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {alt.status === 'OPEN' && (
+                            <>
+                              <button
+                                onClick={() => triggerAlertNudge(alt.id)}
+                                className="px-2.5 py-1 rounded bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 font-semibold text-[11px] transition flex items-center gap-1 cursor-pointer"
+                                title="Send automated nudge to rep"
+                              >
+                                <BellRing className="w-3 h-3" />
+                                <span>Nudge Rep</span>
+                              </button>
+                              <button
+                                onClick={() => acknowledgeAlert(alt.id)}
+                                className="px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium text-[11px] transition cursor-pointer"
+                              >
+                                Ack
+                              </button>
+                            </>
+                          )}
+                          {alt.status === 'ACKNOWLEDGED' && (
                             <button
-                              onClick={() => triggerAlertNudge(alt.id)}
-                              className="px-2.5 py-1 rounded bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 font-semibold text-[11px] transition flex items-center gap-1 cursor-pointer"
-                              title="Send automated nudge to rep"
+                              onClick={() => resolveAlert(alt.id)}
+                              className="px-2.5 py-1 rounded bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 font-semibold text-[11px] transition cursor-pointer"
                             >
-                              <BellRing className="w-3 h-3" />
-                              <span>Nudge Rep</span>
+                              Resolve
                             </button>
-                            <button
-                              onClick={() => acknowledgeAlert(alt.id)}
-                              className="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium text-[11px] transition cursor-pointer"
-                            >
-                              Ack
-                            </button>
-                          </>
-                        )}
-                        {alt.status === 'ACKNOWLEDGED' && (
-                          <button
-                            onClick={() => resolveAlert(alt.id)}
-                            className="px-2.5 py-1 rounded bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 font-semibold text-[11px] transition cursor-pointer"
-                          >
-                            Resolve
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
+        <PaginationControls
+          currentPage={page}
+          totalItems={filteredAlerts.length}
+          pageSize={PAGE_SIZE}
+          onPageChange={setPage}
+        />
       </div>
     </div>
   );

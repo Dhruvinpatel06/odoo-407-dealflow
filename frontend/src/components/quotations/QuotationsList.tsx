@@ -18,6 +18,7 @@ import { StatusBadge } from '../common/StatusBadge';
 import { RiskBadge } from '../common/RiskBadge';
 import { QuotationStage } from '../../types';
 import { getRoleMeta } from '../../utils/rbac';
+import { PaginationControls } from '../common/PaginationControls';
 
 interface QuotationsListProps {
   initialViewMode?: 'table' | 'kanban';
@@ -39,6 +40,8 @@ export const QuotationsList: React.FC<QuotationsListProps> = ({ initialViewMode 
   const [scopeFilter, setScopeFilter] = useState<'MY_DEALS' | 'ALL_DEALS' | 'NEEDS_APPROVAL'>(
     currentUser.role === 'SALES_REP' ? 'MY_DEALS' : 'ALL_DEALS'
   );
+  const [page, setPage] = useState<number>(1);
+  const PAGE_SIZE = 4;
 
   const roleMeta = getRoleMeta(currentUser.role);
 
@@ -58,6 +61,8 @@ export const QuotationsList: React.FC<QuotationsListProps> = ({ initialViewMode 
 
     return matchesSearch && matchesStage && matchesScope;
   });
+
+  const pagedQuotes = filteredQuotes.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const kanbanStages: { stage: QuotationStage; label: string; color: string }[] = [
     { stage: 'DRAFT', label: 'Draft', color: 'border-slate-300' },
@@ -143,7 +148,7 @@ export const QuotationsList: React.FC<QuotationsListProps> = ({ initialViewMode 
           <div className="inline-flex bg-gray-100 p-0.5 rounded-lg border border-gray-200 text-xs">
             {currentUser.role === 'SALES_REP' && (
               <button
-                onClick={() => setScopeFilter('MY_DEALS')}
+                onClick={() => { setScopeFilter('MY_DEALS'); setPage(1); }}
                 className={`px-3 py-1 rounded-md font-semibold transition cursor-pointer ${
                   scopeFilter === 'MY_DEALS' ? 'bg-white text-gray-900 shadow-2xs' : 'text-gray-500 hover:text-gray-800'
                 }`}
@@ -152,7 +157,7 @@ export const QuotationsList: React.FC<QuotationsListProps> = ({ initialViewMode 
               </button>
             )}
             <button
-              onClick={() => setScopeFilter('ALL_DEALS')}
+              onClick={() => { setScopeFilter('ALL_DEALS'); setPage(1); }}
               className={`px-3 py-1 rounded-md font-semibold transition cursor-pointer ${
                 scopeFilter === 'ALL_DEALS' ? 'bg-white text-gray-900 shadow-2xs' : 'text-gray-500 hover:text-gray-800'
               }`}
@@ -160,7 +165,7 @@ export const QuotationsList: React.FC<QuotationsListProps> = ({ initialViewMode 
               All Quotes ({quotations.length})
             </button>
             <button
-              onClick={() => setScopeFilter('NEEDS_APPROVAL')}
+              onClick={() => { setScopeFilter('NEEDS_APPROVAL'); setPage(1); }}
               className={`px-3 py-1 rounded-md font-semibold transition cursor-pointer ${
                 scopeFilter === 'NEEDS_APPROVAL' ? 'bg-white text-purple-700 shadow-2xs' : 'text-gray-500 hover:text-gray-800'
               }`}
@@ -175,14 +180,14 @@ export const QuotationsList: React.FC<QuotationsListProps> = ({ initialViewMode 
               type="text"
               placeholder="Search by quote number, customer, or sales owner..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => { setSearchTerm(e.target.value); setPage(1); }}
               className="w-full pl-9 pr-3 py-1.5 text-xs bg-gray-50 border border-gray-200 rounded-lg text-gray-800 placeholder-gray-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
           <select
             value={stageFilter}
-            onChange={(e) => setStageFilter(e.target.value)}
+            onChange={(e) => { setStageFilter(e.target.value); setPage(1); }}
             className="text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 text-gray-700 font-medium focus:ring-2 focus:ring-blue-500 focus:outline-hidden cursor-pointer"
           >
             <option value="ALL">All Stages ({quotations.length})</option>
@@ -220,56 +225,70 @@ export const QuotationsList: React.FC<QuotationsListProps> = ({ initialViewMode 
                 </tr>
               </thead>
               <tbody className="text-sm divide-y divide-gray-100">
-                {filteredQuotes.map((quote) => (
-                  <tr
-                    key={quote.id}
-                    onClick={() => handleOpenQuote(quote.id)}
-                    className="hover:bg-gray-50 transition-colors cursor-pointer"
-                  >
-                    <td className="px-5 py-4 font-mono text-xs text-gray-400 font-medium">{quote.quoteNumber}</td>
-                    <td className="px-5 py-4">
-                      <div className="font-bold text-gray-900">{quote.customerName}</div>
-                      <div className="text-[10px] text-gray-400 font-mono">Tier: {quote.customerTier}</div>
-                    </td>
-                    <td className="px-5 py-4">
-                      <StatusBadge status={quote.stage} />
-                    </td>
-                    <td className="px-5 py-4 font-mono font-bold text-gray-900">
-                      ${quote.totalAmount.toLocaleString()}
-                    </td>
-                    <td className="px-5 py-4 text-center font-mono font-medium text-emerald-600">
-                      {quote.blendedMarginPercent}%
-                    </td>
-                    <td className="px-5 py-4 text-center">
-                      <RiskBadge score={quote.blendedRiskScore} status={quote.riskStatus} />
-                    </td>
-                    <td className="px-5 py-4 text-gray-600 text-xs">{quote.salesRepName}</td>
-                    <td className="px-5 py-4 text-gray-400 font-mono text-xs">
-                      {new Date(quote.updatedAt).toLocaleDateString()}
-                    </td>
-                    <td className="px-5 py-4 text-right">
-                      {currentUser.role === 'SALES_MANAGER' && quote.stage === 'PENDING_APPROVAL' ? (
-                        <button className="px-2.5 py-1 rounded bg-purple-600 hover:bg-purple-700 text-white font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer shadow-2xs">
-                          <span>Sign Off (L1)</span>
-                          <ArrowRight className="w-3 h-3" />
-                        </button>
-                      ) : currentUser.role === 'FINANCE_OPERATIONS' && quote.stage === 'PENDING_APPROVAL' ? (
-                        <button className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer shadow-2xs">
-                          <span>Finance Review</span>
-                          <ArrowRight className="w-3 h-3" />
-                        </button>
-                      ) : (
-                        <button className="text-[#2563EB] hover:text-blue-800 font-semibold text-xs inline-flex items-center gap-1 cursor-pointer">
-                          <span>Open</span>
-                          <ArrowRight className="w-3 h-3" />
-                        </button>
-                      )}
+                {pagedQuotes.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="py-8 text-center text-gray-400 text-xs">
+                      No quotations found matching the filters.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  pagedQuotes.map((quote) => (
+                    <tr
+                      key={quote.id}
+                      onClick={() => handleOpenQuote(quote.id)}
+                      className="hover:bg-gray-50 transition-colors cursor-pointer"
+                    >
+                      <td className="px-5 py-4 font-mono text-xs text-gray-400 font-medium">{quote.quoteNumber}</td>
+                      <td className="px-5 py-4">
+                        <div className="font-bold text-gray-900">{quote.customerName}</div>
+                        <div className="text-[10px] text-gray-400 font-mono">Tier: {quote.customerTier}</div>
+                      </td>
+                      <td className="px-5 py-4">
+                        <StatusBadge status={quote.stage} />
+                      </td>
+                      <td className="px-5 py-4 font-mono font-bold text-gray-900">
+                        ${quote.totalAmount.toLocaleString()}
+                      </td>
+                      <td className="px-5 py-4 text-center font-mono font-medium text-emerald-600">
+                        {quote.blendedMarginPercent}%
+                      </td>
+                      <td className="px-5 py-4 text-center">
+                        <RiskBadge score={quote.blendedRiskScore} status={quote.riskStatus} />
+                      </td>
+                      <td className="px-5 py-4 text-gray-600 text-xs">{quote.salesRepName}</td>
+                      <td className="px-5 py-4 text-gray-400 font-mono text-xs">
+                        {new Date(quote.updatedAt).toLocaleDateString()}
+                      </td>
+                      <td className="px-5 py-4 text-right">
+                        {currentUser.role === 'SALES_MANAGER' && quote.stage === 'PENDING_APPROVAL' ? (
+                          <button className="px-2.5 py-1 rounded bg-purple-600 hover:bg-purple-700 text-white font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer shadow-2xs">
+                            <span>Sign Off (L1)</span>
+                            <ArrowRight className="w-3 h-3" />
+                          </button>
+                        ) : currentUser.role === 'FINANCE_OPERATIONS' && quote.stage === 'PENDING_APPROVAL' ? (
+                          <button className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer shadow-2xs">
+                            <span>Finance Review</span>
+                            <ArrowRight className="w-3 h-3" />
+                          </button>
+                        ) : (
+                          <button className="text-[#2563EB] hover:text-blue-800 font-semibold text-xs inline-flex items-center gap-1 cursor-pointer">
+                            <span>Open</span>
+                            <ArrowRight className="w-3 h-3" />
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
+          <PaginationControls
+            currentPage={page}
+            totalItems={filteredQuotes.length}
+            pageSize={PAGE_SIZE}
+            onPageChange={setPage}
+          />
         </div>
       ) : (
         /* KANBAN / PIPELINE VIEW */

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   TrendingUp, 
   FileText, 
@@ -28,6 +28,7 @@ import { useApp } from '../../context/AppContext';
 import { StatusBadge } from '../common/StatusBadge';
 import { RiskBadge } from '../common/RiskBadge';
 import { getRoleMeta } from '../../utils/rbac';
+import { PaginationControls } from '../common/PaginationControls';
 
 export const DashboardView: React.FC = () => {
   const { 
@@ -43,6 +44,10 @@ export const DashboardView: React.FC = () => {
     returnForRevision,
     showNotification
   } = useApp();
+
+  const [quotePage, setQuotePage] = useState(1);
+  const [approvalPage, setApprovalPage] = useState(1);
+  const PAGE_SIZE = 4;
 
   const role = currentUser.role;
   const roleMeta = getRoleMeta(role);
@@ -339,7 +344,9 @@ export const DashboardView: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="text-sm divide-y divide-gray-100">
-                {(role === 'SALES_REP' ? repQuotes : quotations).slice(0, 5).map((q) => (
+                {(role === 'SALES_REP' ? repQuotes : quotations)
+                  .slice((quotePage - 1) * PAGE_SIZE, quotePage * PAGE_SIZE)
+                  .map((q) => (
                   <tr 
                     key={q.id}
                     onClick={() => {
@@ -375,6 +382,12 @@ export const DashboardView: React.FC = () => {
               </tbody>
             </table>
           </div>
+          <PaginationControls
+            currentPage={quotePage}
+            totalItems={(role === 'SALES_REP' ? repQuotes : quotations).length}
+            pageSize={PAGE_SIZE}
+            onPageChange={setQuotePage}
+          />
         </div>
 
         {/* Right Column (1 Col): DealFlow Intelligence Light SaaS Card */}
@@ -511,7 +524,9 @@ export const DashboardView: React.FC = () => {
           </div>
 
           <div className="space-y-3">
-            {pendingApprovals.map((app) => (
+            {pendingApprovals
+              .slice((approvalPage - 1) * PAGE_SIZE, approvalPage * PAGE_SIZE)
+              .map((app) => (
               <div
                 key={app.id}
                 onClick={() => setCurrentPage('approvals')}
@@ -534,6 +549,13 @@ export const DashboardView: React.FC = () => {
               </div>
             ))}
           </div>
+          <PaginationControls
+            currentPage={approvalPage}
+            totalItems={pendingApprovals.length}
+            pageSize={PAGE_SIZE}
+            onPageChange={setApprovalPage}
+            className="mt-3 rounded-lg border border-slate-100"
+          />
         </div>
 
         {/* Operational Audit Feed */}

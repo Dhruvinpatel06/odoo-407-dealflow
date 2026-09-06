@@ -202,7 +202,7 @@ export const TestFlowGuideModal: React.FC = () => {
           <span>The prototype faithfully simulates the complete FastAPI + PostgreSQL logic flow.</span>
           <button
             onClick={() => setIsGuideOpen(false)}
-            className="px-4 py-1.5 rounded-lg bg-slate-900 text-white font-medium hover:bg-slate-800 transition cursor-pointer"
+            className="px-4 py-1.5 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 transition cursor-pointer"
           >
             Close Guide
           </button>

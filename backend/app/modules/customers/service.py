@@ -3,14 +3,17 @@
 import uuid
 from typing import List, Optional
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.common.enums import UserRole
 from app.core.exceptions import DealFlowException, ResourceNotFoundError
 from app.models.customer import Customer
 from app.models.customer_tier import CustomerTier
 from app.models.order import Order
 from app.models.quotation import Quotation
 from app.models.subscription import Subscription
+from app.models.user import User
 from app.modules.customers.repository import customer_repository
 from app.modules.customers.schemas import (
     CustomerCreate,
@@ -295,6 +298,106 @@ class CustomerService:
         return customer_repository.list_customer_subscriptions(
             db=db, customer_id=customer_id, skip=skip, limit=limit
         )
+
+    def ensure_customer_for_user(
+        self,
+        db: Session,
+        user: User,
+        explicit_customer_id: Optional[uuid.UUID] = None,
+    ) -> Optional[Customer]:
+        """
+        Synchronize and enforce the canonical 1-to-1 relationship between User (with role CUSTOMER)
+        and Customer.
+        - If role is not CUSTOMER, ensures user.customer_id is None.
+        - If explicit_customer_id is provided, validates that the customer exists and is not
+          already associated with another user.
+        - If not provided, reuses existing user.customer_id, or safely matches an unlinked customer
+          with identical email, or creates a new customer business entity.
+        - Flushes changes to session without premature external commits.
+        """
+        if user.role != UserRole.CUSTOMER:
+            if user.customer_id is not None:
+                user.customer_id = None
+                db.flush()
+            return None
+
+        # If user already has a valid linked customer and no explicit customer override is given
+        if explicit_customer_id is None and user.customer_id is not None:
+            existing = customer_repository.get_customer_by_id(db, user.customer_id)
+            if existing:
+                return existing
+
+        target_customer_id = explicit_customer_id
+
+        if target_customer_id is not None:
+            customer = customer_repository.get_customer_by_id(db, target_customer_id)
+            if not customer:
+                raise ResourceNotFoundError(f"Customer with id '{target_customer_id}' not found")
+
+            # Check if another user is already associated with this customer
+            stmt = select(User).where(User.customer_id == target_customer_id, User.id != user.id)
+            other_user = db.scalars(stmt).first()
+            if other_user:
+                raise DealFlowException(
+                    "This customer record is already associated with another user",
+                    status_code=400,
+                )
+
+            user.customer_id = customer.id
+            db.flush()
+            return customer
+
+        # Attempt to match an existing unlinked customer with matching email
+        if user.email:
+            matching_customer = customer_repository.get_customer_by_email(db, user.email)
+            if matching_customer:
+                # Check whether linked to another user
+                stmt = select(User).where(
+                    User.customer_id == matching_customer.id, User.id != user.id
+                )
+                linked_user = db.scalars(stmt).first()
+                if not linked_user:
+                    user.customer_id = matching_customer.id
+                    db.flush()
+                    return matching_customer
+
+        # No unlinked customer found: create new Customer record
+        tier = customer_repository.get_default_tier(db)
+        new_customer = Customer(
+            name=user.name,
+            email=user.email,
+            customer_tier_id=tier.id,
+            is_active=user.is_active,
+        )
+        db.add(new_customer)
+        db.flush()
+
+        user.customer_id = new_customer.id
+        db.flush()
+        return new_customer
+
+    def sync_all_customer_users(self, db: Session) -> int:
+        """
+        Idempotent batch synchronization: ensures all existing CUSTOMER users
+        have a linked Customer record and non-customer users have customer_id=None.
+        Returns count of customer users synchronized.
+        """
+        non_customer_users = db.scalars(
+            select(User).where(User.role != UserRole.CUSTOMER, User.customer_id.isnot(None))
+        ).all()
+        for u in non_customer_users:
+            u.customer_id = None
+
+        customer_users = db.scalars(
+            select(User).where(User.role == UserRole.CUSTOMER)
+        ).all()
+        synced_count = 0
+        for u in customer_users:
+            self.ensure_customer_for_user(db, u)
+            synced_count += 1
+
+        db.commit()
+        return synced_count
 
 
 customer_service = CustomerService()

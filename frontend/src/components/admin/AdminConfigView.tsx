@@ -24,12 +24,12 @@ import {
   KeyRound
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { AccessRestrictedView } from '../common/AccessRestrictedView';
-import { mockProducts, mockWarehouses } from '../../mockData';
-import { userService, UserAdminError } from '../../services/api';
+import { useQuery } from '@tanstack/react-query';
+import { userService, warehouseService, subscriptionService, UserAdminError } from '../../services/api';
 import { UserResponse, AdminCreateUserRequest } from '../../types';
 import { CustomerManagementPanel } from './CustomerManagementPanel';
 import { CustomerTierManagementPanel } from './CustomerTierManagementPanel';
+import { AccessRestrictedView } from '../common/AccessRestrictedView';
 import { useProductsQuery } from '../../hooks/useBackendData';
 import { PaginationControls } from '../common/PaginationControls';
 
@@ -106,23 +106,20 @@ export const AdminConfigView: React.FC = () => {
   const { 
     showNotification, 
     currentUser, 
-    governanceConfig, 
-    updateGovernanceConfig, 
-    subscriptions, 
     accessToken,
     currentPage,
     setCurrentPage
   } = useApp();
 
-  // Defense-in-depth RBAC check
-  if ((currentUser.role || '').toUpperCase() !== 'ADMIN') {
-    return (
-      <AccessRestrictedView
-        requiredRole="Platform Administrator (Alex Mercer)"
-        featureName="System Governance & Policy Administration"
-      />
-    );
-  }
+  const { data: products = [] } = useProductsQuery();
+  const { data: warehouses = [] } = useQuery({
+    queryKey: ['admin-warehouses'],
+    queryFn: () => warehouseService.listWarehouses(),
+  });
+  const { data: subscriptions = [] } = useQuery({
+    queryKey: ['admin-subscriptions'],
+    queryFn: () => subscriptionService.listSubscriptions(),
+  });
 
   const activeTab: AdminTab = PAGE_TO_TAB[currentPage] || 'DISCOUNTS';
 
@@ -281,58 +278,49 @@ export const AdminConfigView: React.FC = () => {
   };
 
 
-  // Local state initialized from canonical governanceConfig
-  const [repCeiling, setRepCeiling] = useState(governanceConfig.roleCeilings.repCeiling);
-  const [managerCeiling, setManagerCeiling] = useState(governanceConfig.roleCeilings.managerCeiling);
-  const [financeCeiling, setFinanceCeiling] = useState(governanceConfig.roleCeilings.financeCeiling);
-  const [minMarginFloor, setMinMarginFloor] = useState(governanceConfig.minCorporateMarginFloor);
+  // Local state initialized from localStorage/defaults
+  const [repCeiling, setRepCeiling] = useState(10);
+  const [managerCeiling, setManagerCeiling] = useState(20);
+  const [financeCeiling, setFinanceCeiling] = useState(30);
+  const [minMarginFloor, setMinMarginFloor] = useState(25);
   
-  const [tierPlatinum, setTierPlatinum] = useState(governanceConfig.tierDiscountCeilings.PLATINUM);
-  const [tierGold, setTierGold] = useState(governanceConfig.tierDiscountCeilings.GOLD);
-  const [tierSilver, setTierSilver] = useState(governanceConfig.tierDiscountCeilings.SILVER);
-  const [tierBronze, setTierBronze] = useState(governanceConfig.tierDiscountCeilings.BRONZE);
+  const [tierPlatinum, setTierPlatinum] = useState(25);
+  const [tierGold, setTierGold] = useState(18);
+  const [tierSilver, setTierSilver] = useState(12);
+  const [tierBronze, setTierBronze] = useState(8);
 
-  const [catHardware, setCatHardware] = useState(governanceConfig.categoryDiscountCeilings.HARDWARE);
-  const [catSubscription, setCatSubscription] = useState(governanceConfig.categoryDiscountCeilings.SUBSCRIPTION);
-  const [catServices, setCatServices] = useState(governanceConfig.categoryDiscountCeilings.SERVICES);
+  const [catHardware, setCatHardware] = useState(15);
+  const [catSubscription, setCatSubscription] = useState(25);
+  const [catServices, setCatServices] = useState(20);
 
-  const [riskThresholdManager, setRiskThresholdManager] = useState(governanceConfig.managerApprovalRiskThreshold);
-  const [riskThresholdFinance, setRiskThresholdFinance] = useState(governanceConfig.financeApprovalRiskThreshold);
+  const [riskThresholdManager, setRiskThresholdManager] = useState(35);
+  const [riskThresholdFinance, setRiskThresholdFinance] = useState(65);
 
-  const [riskWeightDiscount, setRiskWeightDiscount] = useState(governanceConfig.riskWeights.discountBreach);
-  const [riskWeightMargin, setRiskWeightMargin] = useState(governanceConfig.riskWeights.marginDeviation);
-  const [riskWeightPayment, setRiskWeightPayment] = useState(governanceConfig.riskWeights.paymentRisk);
+  const [riskWeightDiscount, setRiskWeightDiscount] = useState(40);
+  const [riskWeightMargin, setRiskWeightMargin] = useState(35);
+  const [riskWeightPayment, setRiskWeightPayment] = useState(25);
 
   const handleSavePolicy = (e: React.FormEvent) => {
     e.preventDefault();
-    updateGovernanceConfig({
-      roleCeilings: {
-        repCeiling,
-        managerCeiling,
-        financeCeiling
-      },
-      minCorporateMarginFloor: minMarginFloor,
-      tierDiscountCeilings: {
-        PLATINUM: tierPlatinum,
-        GOLD: tierGold,
-        SILVER: tierSilver,
-        BRONZE: tierBronze
-      },
-      categoryDiscountCeilings: {
-        HARDWARE: catHardware,
-        SUBSCRIPTION: catSubscription,
-        SERVICES: catServices
-      },
-      managerApprovalRiskThreshold: riskThresholdManager,
-      financeApprovalRiskThreshold: riskThresholdFinance,
-      riskWeights: {
-        discountBreach: riskWeightDiscount,
-        marginDeviation: riskWeightMargin,
-        paymentRisk: riskWeightPayment
-      }
-    });
+    localStorage.setItem('dealflow_gov_admin_config', JSON.stringify({
+      repCeiling, managerCeiling, financeCeiling, minMarginFloor,
+      tierPlatinum, tierGold, tierSilver, tierBronze,
+      catHardware, catSubscription, catServices,
+      riskThresholdManager, riskThresholdFinance,
+      riskWeightDiscount, riskWeightMargin, riskWeightPayment
+    }));
     showNotification('Commercial governance policies committed to system configuration.', 'success');
   };
+
+  // Defense-in-depth RBAC check (evaluated after all React hooks have run)
+  if ((currentUser.role || '').toUpperCase() !== 'ADMIN') {
+    return (
+      <AccessRestrictedView
+        requiredRole="Platform Administrator (Alex Mercer)"
+        featureName="System Governance & Policy Administration"
+      />
+    );
+  }
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -654,7 +642,7 @@ export const AdminConfigView: React.FC = () => {
         <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
           <div className="p-4 border-b border-slate-100 flex items-center justify-between">
             <h3 className="text-sm font-bold text-slate-900">Configured Products & Pricing Tiers</h3>
-            <span className="text-xs text-slate-400 font-mono">{mockProducts.length} Active SKUs</span>
+            <span className="text-xs text-slate-400 font-mono">{products.length} Active SKUs</span>
           </div>
           <table className="w-full text-left text-xs">
             <thead>
@@ -668,8 +656,12 @@ export const AdminConfigView: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {mockProducts.slice((catalogPage - 1) * PAGE_SIZE, catalogPage * PAGE_SIZE).map((p) => {
-                const margin = (((p.unitPrice - p.unitCost) / p.unitPrice) * 100).toFixed(1);
+              {products.slice((catalogPage - 1) * PAGE_SIZE, catalogPage * PAGE_SIZE).map((p: any) => {
+                const price = Number(p.unit_price ?? p.unitPrice ?? 0);
+                const cost = Number(p.unit_cost ?? p.unitCost ?? 0);
+                const margin = price > 0 ? (((price - cost) / price) * 100).toFixed(1) : '0.0';
+                const catName = p.category_name || p.category || 'General';
+                const discountLimit = Number(p.max_discount_percent ?? p.max_discount_ceiling ?? p.discountLimit ?? 15);
                 return (
                   <tr key={p.id} className="hover:bg-slate-50/60">
                     <td className="py-3 px-4">
@@ -678,13 +670,13 @@ export const AdminConfigView: React.FC = () => {
                     </td>
                     <td className="py-3 px-3">
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
-                        {p.category}
+                        {catName}
                       </span>
                     </td>
-                    <td className="py-3 px-3 font-mono font-bold text-slate-900">${p.unitPrice.toLocaleString()}</td>
-                    <td className="py-3 px-3 font-mono text-slate-600">${p.unitCost.toLocaleString()}</td>
+                    <td className="py-3 px-3 font-mono font-bold text-slate-900">${price.toLocaleString()}</td>
+                    <td className="py-3 px-3 font-mono text-slate-600">${cost.toLocaleString()}</td>
                     <td className="py-3 px-3 font-mono font-semibold text-emerald-600">{margin}%</td>
-                    <td className="py-3 px-3 font-mono font-semibold text-blue-600">{p.categoryDiscountCeiling}%</td>
+                    <td className="py-3 px-3 font-mono font-semibold text-blue-600">{discountLimit}%</td>
                   </tr>
                 );
               })}
@@ -692,7 +684,7 @@ export const AdminConfigView: React.FC = () => {
           </table>
           <PaginationControls
             currentPage={catalogPage}
-            totalItems={mockProducts.length}
+            totalItems={products.length}
             pageSize={PAGE_SIZE}
             onPageChange={setCatalogPage}
           />
@@ -702,21 +694,18 @@ export const AdminConfigView: React.FC = () => {
       {/* Tab 3: Warehouses & Stock */}
       {activeTab === 'WAREHOUSES' && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {mockWarehouses.map((wh) => (
+          {warehouses.map((wh) => (
             <div key={wh.id} className="bg-white rounded-xl border border-slate-200 p-5 shadow-xs space-y-3">
               <div className="flex justify-between items-center pb-2 border-b border-slate-100">
                 <strong className="text-slate-900 text-sm">{wh.name}</strong>
                 <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold text-[10px]">{wh.code}</span>
               </div>
-              <p className="text-xs text-slate-500">Location: {wh.city} &bull; Freight Factor: {wh.shippingWeight}x</p>
+              <p className="text-xs text-slate-500">Location: {wh.address || wh.name} &bull; Freight Factor: {Number(wh.shipping_cost_weight || 1)}x</p>
               <div className="text-xs space-y-1.5 pt-2">
-                <span className="font-bold text-slate-700 block">Inventory Levels:</span>
-                {Object.entries(wh.stockByProduct).map(([pid, qty]) => (
-                  <div key={pid} className="flex justify-between text-slate-600 font-mono text-[11px]">
-                    <span>{pid.toUpperCase()}:</span>
-                    <span className="font-bold text-blue-700">{qty} units in stock</span>
-                  </div>
-                ))}
+                <span className="font-bold text-slate-700 block">Status:</span>
+                <span className="inline-block px-2 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px] font-bold">
+                  {wh.is_active ? 'Active Distribution Hub' : 'Inactive'}
+                </span>
               </div>
             </div>
           ))}
@@ -742,13 +731,13 @@ export const AdminConfigView: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {subscriptions.slice((subPage - 1) * PAGE_SIZE, subPage * PAGE_SIZE).map(s => (
+              {subscriptions.slice((subPage - 1) * PAGE_SIZE, subPage * PAGE_SIZE).map((s: any) => (
                 <tr key={s.id}>
-                  <td className="py-3 px-4 font-bold text-slate-900">{s.productName}</td>
-                  <td className="py-3 px-3 font-mono">{s.interval}</td>
+                  <td className="py-3 px-4 font-bold text-slate-900">{s.product_name || s.productName || 'Subscription'}</td>
+                  <td className="py-3 px-3 font-mono">{s.billing_interval || s.interval || 'MONTHLY'}</td>
                   <td className="py-3 px-3 font-mono font-semibold">{s.quantity}</td>
-                  <td className="py-3 px-3 font-mono font-bold text-slate-900">${s.amount.toLocaleString()}</td>
-                  <td className="py-3 px-3 font-mono text-slate-500">{s.nextBillingDate}</td>
+                  <td className="py-3 px-3 font-mono font-bold text-slate-900">${Number(s.unit_price || s.amount || 0).toLocaleString()}</td>
+                  <td className="py-3 px-3 font-mono text-slate-500">{s.next_billing_date ? new Date(s.next_billing_date).toLocaleDateString() : '-'}</td>
                   <td className="py-3 px-3">
                     <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                       {s.status}

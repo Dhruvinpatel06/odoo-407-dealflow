@@ -147,24 +147,6 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
     canAccessReports: false,
     isExternalCustomer: true,
   },
-  FULFILLMENT_OPERATOR: {
-    canAccessAdmin: false,
-    canApproveQuotes: false,
-    canAccessApprovals: false,
-    isApprover: false,
-    canViewInternalMargins: false,
-    canViewUnitCosts: false,
-    canViewRiskScores: false,
-    canCreateQuotations: false,
-    canEditGovernancePolicies: false,
-    canAccessManagerGovernance: false,
-    canAccessBilling: false,
-    canAccessFulfillment: true,
-    canEditFulfillment: true,
-    canAccessHealth: false,
-    canAccessReports: false,
-    isExternalCustomer: false,
-  }
 };
 
 export function getPendingApprovalStep(approval?: ApprovalInstance): ApprovalStep | undefined {
@@ -255,11 +237,6 @@ export function getRoleNavItems(
         icon: Users,
         roleNote: 'Active RBAC'
       },
-      {
-        id: 'reports',
-        label: 'Reports & Analytics',
-        icon: BarChart3
-      }
     ];
   }
 
@@ -336,19 +313,7 @@ export function getRoleNavItems(
     });
   }
 
-  // Deal Health: Monitored by Sales Rep and Sales Manager
-  if (perms.canAccessHealth) {
-    items.push({ 
-      id: 'deal-health', 
-      label: 'Deal Health', 
-      icon: Activity, 
-      alertBadge: activeAlertsCount > 0 ? `${activeAlertsCount}` : undefined 
-    });
-  }
 
-  if (perms.canAccessReports) {
-    items.push({ id: 'reports', label: 'Reports & Analytics', icon: BarChart3 });
-  }
 
   if (perms.canAccessAdmin) {
     items.push({ 
@@ -413,15 +378,7 @@ export function getRoleMeta(role: UserRole | string) {
         desc: 'External client: Reviews proposed deliverables, negotiated pricing, accepts or counters terms.',
         restrictionsSummary: "Strict data minimization: Internal margins, unit costs, risk scores, and approval notes are hidden."
       };
-    case 'FULFILLMENT_OPERATOR':
-      return {
-        label: 'Fulfillment Operations',
-        name: 'Carlos Ruiz',
-        badgeColor: 'bg-sky-50 text-sky-700 border-sky-200',
-        badgeDot: 'bg-sky-600',
-        desc: 'Warehouse Logistics: Multi-facility order allocation and backorder management.',
-        restrictionsSummary: 'Access to warehouse fulfillment tracking, allocation overrides, and inventory management.'
-      };
+
     default:
       return {
         label: 'User',

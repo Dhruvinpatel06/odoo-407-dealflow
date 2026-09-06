@@ -27,7 +27,7 @@ def test_successful_customer_signup(client: TestClient, db: Session):
     assert data["email"] == payload["email"].lower()
     assert data["role"] == UserRole.CUSTOMER.value
     assert data["is_active"] is True
-    assert data["customer_id"] is None
+    assert data["customer_id"] is not None
     assert "password_hash" not in data
     assert "password" not in data
 
@@ -40,6 +40,9 @@ def test_successful_customer_signup(client: TestClient, db: Session):
     assert user is not None
     assert user.role == UserRole.CUSTOMER
     assert user.is_active is True
+    assert user.customer_id is not None
+    assert user.customer is not None
+    assert user.customer.email == payload["email"].lower()
     assert user.password_hash.startswith("$argon2id$")
     assert user.password_hash != payload["password"]
     assert verify_password(payload["password"], user.password_hash) is True

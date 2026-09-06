@@ -11,7 +11,8 @@ import {
   DollarSign, 
   TrendingUp, 
   ArrowRight,
-  Sparkles
+  Sparkles,
+  Loader2
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { StatusBadge } from '../common/StatusBadge';
@@ -19,6 +20,9 @@ import { RiskBadge } from '../common/RiskBadge';
 import { QuotationStage } from '../../types';
 import { getRoleMeta } from '../../utils/rbac';
 import { PaginationControls } from '../common/PaginationControls';
+import { useQuotationsQuery, useCreateQuotationMutation } from '../../hooks/useBackendData';
+
+const num = (v: any) => Number(v ?? 0);
 
 interface QuotationsListProps {
   initialViewMode?: 'table' | 'kanban';
@@ -26,13 +30,14 @@ interface QuotationsListProps {
 
 export const QuotationsList: React.FC<QuotationsListProps> = ({ initialViewMode = 'table' }) => {
   const { 
-    quotations, 
     setCurrentPage, 
     setSelectedQuoteId, 
     currentUser,
-    createNewQuotation,
     showNotification 
   } = useApp();
+
+  const { data: rawQuotations = [], isLoading } = useQuotationsQuery();
+  const createMutation = useCreateQuotationMutation();
 
   const [viewMode, setViewMode] = useState<'table' | 'kanban'>(initialViewMode);
   const [searchTerm, setSearchTerm] = useState('');
@@ -45,6 +50,21 @@ export const QuotationsList: React.FC<QuotationsListProps> = ({ initialViewMode 
 
   const roleMeta = getRoleMeta(currentUser.role);
 
+  // Map backend response to display-friendly format
+  const quotations = rawQuotations.map(q => ({
+    id: q.id,
+    quoteNumber: q.quotation_number,
+    customerName: q.customer_name || 'Unknown',
+    customerTier: q.customer_tier_name || '',
+    salesRepName: q.sales_rep_name || '',
+    stage: q.status as QuotationStage,
+    totalAmount: num(q.total_amount),
+    blendedMarginPercent: Math.round(num(q.margin_percent) * 10) / 10,
+    blendedRiskScore: Math.round(num(q.risk_score)),
+    riskStatus: q.risk_status || (num(q.risk_score) >= 70 ? 'HIGH_RISK' : num(q.risk_score) >= 45 ? 'MODERATE' : 'HEALTHY') as 'HEALTHY' | 'MODERATE' | 'HIGH_RISK',
+    updatedAt: q.updated_at,
+  }));
+
   const filteredQuotes = quotations.filter((q) => {
     const matchesSearch = 
       q.quoteNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -54,7 +74,7 @@ export const QuotationsList: React.FC<QuotationsListProps> = ({ initialViewMode 
     
     let matchesScope = true;
     if (scopeFilter === 'MY_DEALS') {
-      matchesScope = q.salesRepName === currentUser.name || q.salesRepName === 'Sarah Chen';
+      matchesScope = q.salesRepName === currentUser.name;
     } else if (scopeFilter === 'NEEDS_APPROVAL') {
       matchesScope = q.stage === 'PENDING_APPROVAL';
     }
@@ -77,6 +97,20 @@ export const QuotationsList: React.FC<QuotationsListProps> = ({ initialViewMode 
   const handleOpenQuote = (id: string) => {
     setSelectedQuoteId(id);
     setCurrentPage('quote-builder');
+  };
+
+  const handleCreateQuotation = async () => {
+    try {
+      // For now, create a quotation without a customer (user will select in quote builder)
+      const result = await createMutation.mutateAsync({ customer_id: '' });
+      if (result?.id) {
+        setSelectedQuoteId(result.id);
+        setCurrentPage('quote-builder');
+        showNotification('New quotation created.', 'success');
+      }
+    } catch (err: any) {
+      showNotification(err?.message || 'Failed to create quotation.', 'error');
+    }
   };
 
   return (
@@ -114,12 +148,11 @@ export const QuotationsList: React.FC<QuotationsListProps> = ({ initialViewMode 
           {/* New Quote Button */}
           {(currentUser.role === 'SALES_REP' || currentUser.role === 'ADMIN' || currentUser.role === 'SALES_MANAGER') && (
             <button
-              onClick={() => {
-                createNewQuotation();
-              }}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#2563EB] hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition cursor-pointer"
+              onClick={handleCreateQuotation}
+              disabled={createMutation.isPending}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#2563EB] hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition cursor-pointer disabled:opacity-50"
             >
-              <Plus className="w-3.5 h-3.5" />
+              {createMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
               <span>Create Quotation</span>
             </button>
           )}
@@ -206,8 +239,16 @@ export const QuotationsList: React.FC<QuotationsListProps> = ({ initialViewMode 
         </div>
       </div>
 
+      {/* Loading State */}
+      {isLoading && (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
+          <span className="ml-2 text-sm text-gray-500">Loading quotations...</span>
+        </div>
+      )}
+
       {/* TABLE VIEW */}
-      {viewMode === 'table' ? (
+      {!isLoading && viewMode === 'table' ? (
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left">
@@ -290,7 +331,7 @@ export const QuotationsList: React.FC<QuotationsListProps> = ({ initialViewMode 
             onPageChange={setPage}
           />
         </div>
-      ) : (
+      ) : !isLoading ? (
         /* KANBAN / PIPELINE VIEW */
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-x-auto pb-4">
           {kanbanStages.map((col) => {
@@ -343,7 +384,7 @@ export const QuotationsList: React.FC<QuotationsListProps> = ({ initialViewMode 
             );
           })}
         </div>
-      )}
+      ) : null}
     </div>
   );
 };

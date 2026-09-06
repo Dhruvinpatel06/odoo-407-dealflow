@@ -2,7 +2,6 @@ export type UserRole =
   | 'SALES_REP'
   | 'SALES_MANAGER'
   | 'FINANCE_OPERATIONS'
-  | 'FULFILLMENT_OPERATOR'
   | 'CUSTOMER_PORTAL'
   | 'CUSTOMER'
   | 'ADMIN';
@@ -486,8 +485,15 @@ export interface ProductItemResponse {
   sku: string;
   category_id?: string;
   category?: ProductCategory | string;
+  category_name?: string;
   unit_price: number | string;
   unit_cost: number | string;
+  base_price?: number | string;
+  cost_price?: number | string;
+  list_price?: number | string;
+  standard_cost?: number | string;
+  max_discount_percent?: number | string;
+  max_discount_ceiling?: number | string;
   tax_rate?: number | string;
   is_subscription_eligible?: boolean;
   description?: string | null;

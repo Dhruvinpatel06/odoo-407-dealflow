@@ -33,7 +33,7 @@ import { useApp } from '../../context/AppContext';
 import { PaginationControls } from '../common/PaginationControls';
 
 export const CustomerManagementPanel: React.FC = () => {
-  const { showNotification, refreshBackendCustomers } = useApp();
+  const { showNotification } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTierFilter, setSelectedTierFilter] = useState('');
   const [page, setPage] = useState(1);
@@ -147,7 +147,7 @@ export const CustomerManagementPanel: React.FC = () => {
       await createCustomerMutation.mutateAsync(payload);
       showNotification(`Customer "${payload.name}" created successfully.`, 'success');
       setIsAddOpen(false);
-      refreshBackendCustomers();
+      refetchCustomers();
     } catch (err: any) {
       setFormError(err?.message || 'Failed to create customer record.');
     }
@@ -188,7 +188,7 @@ export const CustomerManagementPanel: React.FC = () => {
       await updateCustomerMutation.mutateAsync({ id: customerToEdit.id, payload });
       showNotification(`Customer "${editName}" updated successfully.`, 'success');
       setIsEditOpen(false);
-      refreshBackendCustomers();
+      refetchCustomers();
     } catch (err: any) {
       setEditFormError(err?.message || 'Failed to update customer.');
     }
@@ -199,7 +199,7 @@ export const CustomerManagementPanel: React.FC = () => {
       try {
         await deleteCustomerMutation.mutateAsync(c.id);
         showNotification(`Customer "${c.name}" deactivated.`, 'info');
-        refreshBackendCustomers();
+        refetchCustomers();
       } catch (err: any) {
         showNotification(err?.message || 'Failed to deactivate customer.', 'error');
       }

@@ -10,6 +10,7 @@ from app.core.exceptions import DealFlowException, ResourceNotFoundError
 from app.core.security import hash_password
 from app.models.user import User
 from app.modules.auth.repository import auth_repository
+from app.modules.customers.service import customer_service
 from app.modules.users.repository import user_repository
 from app.modules.users.schemas import UserCreateRequest
 
@@ -21,6 +22,8 @@ class UserService:
         """
         Create a new user with administrative authorization.
         Enforces unique email, hashes password with Argon2id, and persists user.
+        For CUSTOMER role, automatically synchronizes/creates corresponding Customer record atomically.
+        For internal roles, ensures customer_id is None.
         """
         cleaned_email = request.email.strip().lower()
         existing = user_repository.get_by_email(db, cleaned_email)
@@ -28,15 +31,41 @@ class UserService:
             raise DealFlowException("A user with this email already exists", status_code=400)
 
         password_hash = hash_password(request.password)
-        return user_repository.create_user(
-            db=db,
-            name=request.name,
-            email=cleaned_email,
-            password_hash=password_hash,
-            role=request.role,
-            customer_id=request.customer_id,
-            is_active=request.is_active,
-        )
+
+        if request.role == UserRole.CUSTOMER:
+            try:
+                user = user_repository.create_user(
+                    db=db,
+                    name=request.name,
+                    email=cleaned_email,
+                    password_hash=password_hash,
+                    role=UserRole.CUSTOMER,
+                    customer_id=None,
+                    is_active=request.is_active,
+                    auto_commit=False,
+                )
+                customer_service.ensure_customer_for_user(
+                    db=db,
+                    user=user,
+                    explicit_customer_id=request.customer_id,
+                )
+                db.commit()
+                db.refresh(user)
+                return user
+            except Exception:
+                db.rollback()
+                raise
+        else:
+            return user_repository.create_user(
+                db=db,
+                name=request.name,
+                email=cleaned_email,
+                password_hash=password_hash,
+                role=request.role,
+                customer_id=None,
+                is_active=request.is_active,
+                auto_commit=True,
+            )
 
     def get_user_by_id(self, db: Session, user_id: uuid.UUID) -> Optional[User]:
         """Fetch user by id."""

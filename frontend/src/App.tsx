@@ -1,5 +1,6 @@
 import React from 'react';
 import { AppProvider, useApp } from './context/AppContext';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Sidebar } from './components/layout/Sidebar';
 import { DashboardView } from './components/dashboard/DashboardView';
 import { QuotationsList } from './components/quotations/QuotationsList';
@@ -8,8 +9,6 @@ import { ApprovalCenter } from './components/approvals/ApprovalCenter';
 import { FulfillmentView } from './components/fulfillment/FulfillmentView';
 import { BillingView } from './components/billing/BillingView';
 import { CustomerPortal } from './components/portal/CustomerPortal';
-import { DealHealthView } from './components/health/DealHealthView';
-import { ReportsView } from './components/reports/ReportsView';
 import { AdminConfigView } from './components/admin/AdminConfigView';
 import { ManagerGovernanceView } from './components/governance/ManagerGovernanceView';
 import { LoginView } from './components/auth/LoginView';
@@ -18,7 +17,17 @@ import { TestFlowGuideModal } from './components/common/TestFlowGuideModal';
 import { AccessRestrictedView } from './components/common/AccessRestrictedView';
 import { UserRole } from './types';
 import { ROLE_PERMISSIONS } from './utils/rbac';
-import { CheckCircle2, AlertTriangle, Info, X } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, Info } from 'lucide-react';
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      retry: 1,
+      staleTime: 1000 * 60,
+    },
+  },
+});
 
 const AppContent: React.FC = () => {
   const { currentPage, notification, currentUser } = useApp();
@@ -28,7 +37,6 @@ const AppContent: React.FC = () => {
     const normalizedRole = (currentUser.role ? String(currentUser.role).toUpperCase() : '') as UserRole;
     const perms = ROLE_PERMISSIONS[normalizedRole] || ROLE_PERMISSIONS.SALES_REP;
 
-    // Requirement 3: Customer Portal must be accessible ONLY when logged in as Customer / Portal User
     if (!perms.isExternalCustomer) {
       return (
         <div className="flex h-screen bg-[#F9FAFB] font-sans text-[#111827] overflow-hidden">
@@ -36,7 +44,7 @@ const AppContent: React.FC = () => {
           <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
             <main className="flex-1 overflow-y-auto bg-[#F9FAFB]">
               <AccessRestrictedView 
-                requiredRole="Customer / External Portal User (David Kross)" 
+                requiredRole="Customer / External Portal User" 
                 featureName="Customer Collaboration Portal" 
               />
             </main>
@@ -49,7 +57,6 @@ const AppContent: React.FC = () => {
       <div className="min-h-screen bg-[#F9FAFB] font-sans text-[#111827]">
         <CustomerPortal />
         <TestFlowGuideModal />
-        {/* Global Toast Notification */}
         {notification && (
           <div className="fixed bottom-5 right-5 z-50 animate-in fade-in slide-in-from-bottom-3 duration-200">
             <div className={`flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-xl text-xs font-semibold border ${
@@ -70,7 +77,7 @@ const AppContent: React.FC = () => {
     );
   }
 
-  // Full-screen Persona Switcher & Login
+  // Full-screen Login
   if (currentPage === 'login') {
     return (
       <div className="min-h-screen bg-[#F9FAFB] font-sans text-[#111827]">
@@ -90,13 +97,11 @@ const AppContent: React.FC = () => {
     );
   }
 
-
   // Standard Internal Enterprise Layout
   const renderCurrentPage = () => {
     const normalizedRole = (currentUser.role ? String(currentUser.role).toUpperCase() : '') as UserRole;
     const perms = ROLE_PERMISSIONS[normalizedRole] || ROLE_PERMISSIONS.SALES_REP;
 
-    // Requirement 2: A Customer user must remain inside the customer portal
     if (perms.isExternalCustomer) {
       return (
         <AccessRestrictedView 
@@ -107,29 +112,20 @@ const AppContent: React.FC = () => {
     }
 
     const adminPages = [
-      'admin',
-      'admin-config',
-      'discount-ceilings',
-      'customers-accounts',
-      'customer-tiers',
-      'catalog-pricelists',
-      'warehouses-stock',
-      'subscriptions-billing',
-      'risk-margins',
-      'users-access'
+      'admin', 'admin-config', 'discount-ceilings', 'customers-accounts',
+      'customer-tiers', 'catalog-pricelists', 'warehouses-stock',
+      'subscriptions-billing', 'risk-margins', 'users-access'
     ];
 
-    // RBAC: If a non-admin attempts to view any Admin governance page, display access restriction
     if (adminPages.includes(currentPage) && normalizedRole !== 'ADMIN') {
       return (
         <AccessRestrictedView 
-          requiredRole="Platform Administrator (Alex Mercer)" 
+          requiredRole="Platform Administrator" 
           featureName="System Governance & Policy Administration" 
         />
       );
     }
 
-    // Quotation Builder / Deals Pipeline: Sales Rep and Sales Manager (Admin via admin config)
     if ((currentPage === 'quotations' || currentPage === 'quote-builder' || currentPage === 'pipeline') && !perms.canCreateQuotations && normalizedRole !== 'ADMIN') {
       return (
         <AccessRestrictedView 
@@ -139,7 +135,6 @@ const AppContent: React.FC = () => {
       );
     }
 
-    // Fulfillment: Sales Rep (tracking) and Finance/Ops (managing fulfillment splits & backorders)
     if (currentPage === 'fulfillment' && !perms.canAccessFulfillment) {
       return (
         <AccessRestrictedView 
@@ -149,41 +144,19 @@ const AppContent: React.FC = () => {
       );
     }
 
-    // Billing: Finance & RevOps and Administrator
     if (currentPage === 'billing' && !perms.canAccessBilling) {
       return (
         <AccessRestrictedView 
-          requiredRole="Finance & RevOps (Elena Rostova) or Administrator" 
+          requiredRole="Finance & RevOps or Administrator" 
           featureName="Hybrid Billing & Recurring Subscriptions" 
         />
       );
     }
 
-    // Deal Health: Sales Rep, Sales Manager, and Administrator
-    if (currentPage === 'deal-health' && !perms.canAccessHealth) {
-      return (
-        <AccessRestrictedView 
-          requiredRole="Sales Representative, Sales Manager, or Administrator" 
-          featureName="Deal Health & Anomaly Monitoring" 
-        />
-      );
-    }
-
-    // Reports: Platform Administrator
-    if (currentPage === 'reports' && !perms.canAccessReports) {
-      return (
-        <AccessRestrictedView 
-          requiredRole="Platform Administrator (Alex Mercer)" 
-          featureName="Executive Reporting & Operations Analytics" 
-        />
-      );
-    }
-
-    // Manager Governance: Sales Manager and Administrator
     if (currentPage === 'manager-governance' && !perms.canAccessManagerGovernance) {
       return (
         <AccessRestrictedView 
-          requiredRole="Sales Manager (Marcus Vance) or Administrator" 
+          requiredRole="Sales Manager or Administrator" 
           featureName="Sales Operations Governance & Thresholds" 
         />
       );
@@ -204,10 +177,6 @@ const AppContent: React.FC = () => {
         return <FulfillmentView />;
       case 'billing':
         return <BillingView />;
-      case 'deal-health':
-        return <DealHealthView />;
-      case 'reports':
-        return <ReportsView />;
       case 'manager-governance':
         return <ManagerGovernanceView />;
       case 'admin':
@@ -228,20 +197,13 @@ const AppContent: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-[#F9FAFB] font-sans text-[#111827] overflow-hidden">
-      {/* Permanent Enterprise Sidebar */}
       <Sidebar />
-
-      {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <main className="flex-1 overflow-y-auto bg-[#F9FAFB]">
           {renderCurrentPage()}
         </main>
       </div>
-
-      {/* Interactive Acceptance Test Guide Modal (Steps 1 to 8) */}
       <TestFlowGuideModal />
-
-      {/* Global Toast Notification */}
       {notification && (
         <div className="fixed bottom-5 right-5 z-50 animate-in fade-in slide-in-from-bottom-3 duration-200">
           <div className={`flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-xl text-xs font-semibold border ${
@@ -264,8 +226,10 @@ const AppContent: React.FC = () => {
 
 export default function App() {
   return (
-    <AppProvider>
-      <AppContent />
-    </AppProvider>
+    <QueryClientProvider client={queryClient}>
+      <AppProvider>
+        <AppContent />
+      </AppProvider>
+    </QueryClientProvider>
   );
 }

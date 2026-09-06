@@ -159,6 +159,7 @@ class CustomerResponse(BaseModel):
     billing_address: Optional[str] = None
     shipping_address: Optional[str] = None
     is_active: bool
+    user_id: Optional[uuid.UUID] = None
     created_at: datetime
     updated_at: datetime
 

@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 
 from app.common.enums import UserRole
 from app.core.database import get_db
-from app.core.dependencies import require_roles
+from app.core.dependencies import get_current_user, require_roles
+from app.core.exceptions import ForbiddenError, ResourceNotFoundError
 from app.models.user import User
 from app.modules.customers.schemas import (
     CustomerCreate,
@@ -101,6 +102,25 @@ def create_customer(
 
 
 @customer_router.get(
+    "/me",
+    response_model=CustomerDetailResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get Current Authenticated Customer Profile",
+)
+def get_current_customer_profile(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> CustomerDetailResponse:
+    """
+    Retrieve customer record associated with the authenticated customer user.
+    """
+    if not current_user.customer_id:
+        raise ResourceNotFoundError("No customer record associated with current user")
+    customer = customer_service.get_customer_by_id(db=db, customer_id=current_user.customer_id)
+    return CustomerDetailResponse.model_validate(customer)
+
+
+@customer_router.get(
     "/{id}",
     response_model=CustomerDetailResponse,
     status_code=status.HTTP_200_OK,
@@ -115,6 +135,7 @@ def get_customer(
                 UserRole.SALES_MANAGER,
                 UserRole.SALES_REP,
                 UserRole.FINANCE_OPERATIONS,
+                UserRole.CUSTOMER,
             ]
         )
     ),
@@ -122,8 +143,10 @@ def get_customer(
 ) -> CustomerDetailResponse:
     """
     Retrieve customer details including customer tier association.
-    Accessible to ADMIN, SALES_MANAGER, SALES_REP, and FINANCE_OPERATIONS.
+    Accessible to internal roles and the customer user owning this record.
     """
+    if current_user.role == UserRole.CUSTOMER and current_user.customer_id != id:
+        raise ForbiddenError("You do not have permission to access another customer's data")
     customer = customer_service.get_customer_by_id(db=db, customer_id=id)
     return CustomerDetailResponse.model_validate(customer)
 
@@ -201,6 +224,7 @@ def get_customer_quotations(
                 UserRole.SALES_MANAGER,
                 UserRole.SALES_REP,
                 UserRole.FINANCE_OPERATIONS,
+                UserRole.CUSTOMER,
             ]
         )
     ),
@@ -208,8 +232,10 @@ def get_customer_quotations(
 ) -> List[QuotationResponse]:
     """
     Retrieve quotation history belonging to a specific customer.
-    Accessible to ADMIN, SALES_MANAGER, SALES_REP, and FINANCE_OPERATIONS.
+    Accessible to internal roles and the customer user owning this record.
     """
+    if current_user.role == UserRole.CUSTOMER and current_user.customer_id != id:
+        raise ForbiddenError("You do not have permission to access another customer's data")
     quotations = customer_service.get_customer_quotations(
         db=db, customer_id=id, skip=skip, limit=limit
     )
@@ -233,6 +259,7 @@ def get_customer_orders(
                 UserRole.SALES_MANAGER,
                 UserRole.SALES_REP,
                 UserRole.FINANCE_OPERATIONS,
+                UserRole.CUSTOMER,
             ]
         )
     ),
@@ -240,8 +267,10 @@ def get_customer_orders(
 ) -> List[OrderResponse]:
     """
     Retrieve order history belonging to a specific customer.
-    Accessible to ADMIN, SALES_MANAGER, SALES_REP, and FINANCE_OPERATIONS.
+    Accessible to internal roles and the customer user owning this record.
     """
+    if current_user.role == UserRole.CUSTOMER and current_user.customer_id != id:
+        raise ForbiddenError("You do not have permission to access another customer's data")
     orders = customer_service.get_customer_orders(
         db=db, customer_id=id, skip=skip, limit=limit
     )
@@ -265,6 +294,7 @@ def get_customer_subscriptions(
                 UserRole.SALES_MANAGER,
                 UserRole.SALES_REP,
                 UserRole.FINANCE_OPERATIONS,
+                UserRole.CUSTOMER,
             ]
         )
     ),
@@ -272,8 +302,10 @@ def get_customer_subscriptions(
 ) -> List[SubscriptionResponse]:
     """
     Retrieve subscription history belonging to a specific customer.
-    Accessible to ADMIN, SALES_MANAGER, SALES_REP, and FINANCE_OPERATIONS.
+    Accessible to internal roles and the customer user owning this record.
     """
+    if current_user.role == UserRole.CUSTOMER and current_user.customer_id != id:
+        raise ForbiddenError("You do not have permission to access another customer's data")
     subscriptions = customer_service.get_customer_subscriptions(
         db=db, customer_id=id, skip=skip, limit=limit
     )

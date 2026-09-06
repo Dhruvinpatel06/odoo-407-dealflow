@@ -336,5 +336,55 @@ class CustomerRepository:
         )
         return list(db.scalars(stmt).all())
 
+    def get_customer_by_email(
+        self, db: Session, email: str
+    ) -> Optional[Customer]:
+        """Fetch customer record by email (case-insensitive)."""
+        stmt = select(Customer).where(
+            func.lower(Customer.email) == email.strip().lower()
+        )
+        return db.scalars(stmt).first()
+
+    def get_customer_by_user_id(
+        self, db: Session, user_id: uuid.UUID
+    ) -> Optional[Customer]:
+        """Fetch customer record linked to a user."""
+        stmt = (
+            select(Customer)
+            .join(User, User.customer_id == Customer.id)
+            .where(User.id == user_id)
+        )
+        return db.scalars(stmt).first()
+
+    def get_default_tier(self, db: Session) -> CustomerTier:
+        """Fetch or create default active customer tier."""
+        for name in ["STANDARD", "DEFAULT", "BRONZE", "GOLD"]:
+            tier = db.scalars(
+                select(CustomerTier).where(
+                    func.upper(CustomerTier.name) == name,
+                    CustomerTier.is_active.is_(True),
+                )
+            ).first()
+            if tier:
+                return tier
+
+        tier = db.scalars(
+            select(CustomerTier)
+            .where(CustomerTier.is_active.is_(True))
+            .order_by(CustomerTier.default_discount_limit.asc())
+        ).first()
+        if tier:
+            return tier
+
+        tier = CustomerTier(
+            name="STANDARD",
+            description="Default Customer Tier",
+            default_discount_limit=Decimal("0.00"),
+            is_active=True,
+        )
+        db.add(tier)
+        db.flush()
+        return tier
+
 
 customer_repository = CustomerRepository()

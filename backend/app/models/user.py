@@ -46,6 +46,7 @@ class User(Base):
         Uuid,
         ForeignKey("customers.id", ondelete="SET NULL"),
         nullable=True,
+        unique=True,
         index=True,
     )
     is_active: Mapped[bool] = mapped_column(
@@ -63,7 +64,7 @@ class User(Base):
 
     # Relationships
     customer: Mapped[Optional[Customer]] = relationship(
-        "Customer", back_populates="users", foreign_keys=[customer_id]
+        "Customer", back_populates="user", foreign_keys=[customer_id]
     )
     auth_sessions: Mapped[List[AuthSession]] = relationship(
         "AuthSession", back_populates="user", cascade="all, delete-orphan"

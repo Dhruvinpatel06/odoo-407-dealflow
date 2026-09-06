@@ -1,28 +1,26 @@
 import React from 'react';
 import { 
-  CheckCircle2, 
   ChevronRight,
   Sparkles
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { getRoleNavItems, getRoleMeta } from '../../utils/rbac';
+import { usePendingApprovalsQuery } from '../../hooks/useBackendData';
 
 export const Sidebar: React.FC = () => {
   const { 
     currentPage, 
     setCurrentPage, 
     currentUser, 
-    setUserRole,
-    approvals, 
-    dealAlerts,
     setIsGuideOpen,
     logout 
   } = useApp();
 
-  const pendingApprovalsCount = approvals.filter(a => a.status === 'PENDING').length;
-  const activeAlertsCount = dealAlerts.filter(a => a.status === 'OPEN').length;
+  // Fetch pending approval count from real backend
+  const { data: pendingApprovals } = usePendingApprovalsQuery();
+  const pendingApprovalsCount = pendingApprovals?.length ?? 0;
 
-  const navItems = getRoleNavItems(currentUser.role, pendingApprovalsCount, activeAlertsCount);
+  const navItems = getRoleNavItems(currentUser.role, pendingApprovalsCount, 0);
   const roleMeta = getRoleMeta(currentUser.role);
   const isUserAdmin = (currentUser.role || '').toUpperCase() === 'ADMIN';
   const displayRole = currentUser.role ? currentUser.role.toLowerCase() : 'admin';

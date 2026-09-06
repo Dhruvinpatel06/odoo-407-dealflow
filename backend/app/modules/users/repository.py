@@ -31,6 +31,7 @@ class UserRepository:
         role: UserRole,
         customer_id: Optional[uuid.UUID] = None,
         is_active: bool = True,
+        auto_commit: bool = True,
     ) -> User:
         """Create and persist a new application user."""
         user = User(
@@ -42,8 +43,11 @@ class UserRepository:
             is_active=is_active,
         )
         db.add(user)
-        db.commit()
-        db.refresh(user)
+        if auto_commit:
+            db.commit()
+            db.refresh(user)
+        else:
+            db.flush()
         return user
 
     def list_users(

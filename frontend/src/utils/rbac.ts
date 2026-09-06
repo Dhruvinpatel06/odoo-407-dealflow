@@ -14,7 +14,9 @@ import {
   Warehouse,
   Repeat,
   Sliders,
-  Users
+  Users,
+  Building2,
+  ShieldCheck
 } from 'lucide-react';
 
 export interface RolePermissions {
@@ -65,12 +67,12 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
     canViewRiskScores: true,
     canCreateQuotations: true,
     canEditGovernancePolicies: false,
-    canAccessManagerGovernance: false, // Restricted to Administrator
+    canAccessManagerGovernance: true, // Configures discount tiers and approval chains
     canAccessBilling: false,           // Restricted to Finance & Operations / Admin
-    canAccessFulfillment: true,
+    canAccessFulfillment: false,       // Finance & Operations handles warehouse fulfillment
     canEditFulfillment: false,
-    canAccessHealth: true,
-    canAccessReports: false,           // Restricted to Finance & Operations / Admin
+    canAccessHealth: true,             // Monitors deal health
+    canAccessReports: false,           // Restricted to Admin
     isExternalCustomer: false,
   },
   FINANCE_OPERATIONS: {
@@ -84,11 +86,11 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
     canCreateQuotations: false,
     canEditGovernancePolicies: false,
     canAccessManagerGovernance: false,
-    canAccessBilling: true,
-    canAccessFulfillment: true,
+    canAccessBilling: true,            // Reconciles recurring billing and credit notes
+    canAccessFulfillment: true,        // Manages warehouse fulfillment splits and backorders
     canEditFulfillment: true,
-    canAccessHealth: true,
-    canAccessReports: true,
+    canAccessHealth: false,            // Deal health is for Sales Rep / Sales Manager
+    canAccessReports: false,           // Platform-wide reporting is for Admin
     isExternalCustomer: false,
   },
   ADMIN: {
@@ -192,14 +194,30 @@ export function getRoleNavItems(
   const normalizedRole = (role ? String(role).toUpperCase() : '') as UserRole;
   const perms = ROLE_PERMISSIONS[normalizedRole] || ROLE_PERMISSIONS.SALES_REP;
 
+  // External Customer has no internal sidebar navigation items
+  if (perms.isExternalCustomer) {
+    return [];
+  }
+
   // Platform Administrator has dedicated System Governance responsibilities
-  // Quotations, Approvals, Fulfillment, Billing & Hybrid, and Deal Health are excluded
   if (normalizedRole === 'ADMIN') {
     return [
       {
         id: 'dashboard',
         label: 'Dashboard',
         icon: LayoutDashboard
+      },
+      {
+        id: 'customers-accounts',
+        label: 'Customers & Accounts',
+        icon: Building2,
+        roleNote: 'Directory & Portals'
+      },
+      {
+        id: 'customer-tiers',
+        label: 'Customer Tiers',
+        icon: ShieldCheck,
+        roleNote: 'Tier Governance'
       },
       {
         id: 'discount-ceilings',
@@ -250,18 +268,12 @@ export function getRoleNavItems(
       id: 'dashboard', 
       label: normalizedRole === 'SALES_REP' ? 'My Pipeline' : normalizedRole === 'SALES_MANAGER' ? 'Team Dashboard' : 'Dashboard', 
       icon: LayoutDashboard 
-    },
-    { 
-      id: 'quotations', 
-      label: 'Quotations', 
-      icon: FileText, 
-      badge: '5' 
     }
   ];
 
-  // For Sales Manager: Show Approvals PROMINENTLY directly at the top with highlight!
+  // For Sales Manager: Show Approvals Queue PROMINENTLY directly after dashboard
   if (normalizedRole === 'SALES_MANAGER') {
-    items.splice(1, 0, {
+    items.push({
       id: 'approvals',
       label: 'Approvals Queue',
       icon: CheckCircle2,
@@ -269,30 +281,62 @@ export function getRoleNavItems(
       highlighted: true,
       roleNote: 'Manager Level 1 Sign-Off'
     });
-  } else if (perms.canAccessApprovals) {
-    items.push({
-      id: 'approvals',
-      label: normalizedRole === 'SALES_REP' ? 'My Submitted Approvals' : 'Approval Center',
-      icon: CheckCircle2,
-      alertBadge: pendingApprovalsCount > 0 ? `${pendingApprovalsCount}` : undefined,
-      roleNote: normalizedRole === 'SALES_REP' ? 'Submitter View' : 'Tier 2 Finance'
+  }
+
+  // Quotations: Only for roles that build or review commercial deals (Sales Rep and Sales Manager)
+  if (perms.canCreateQuotations) {
+    items.push({ 
+      id: 'quotations', 
+      label: 'Quotations', 
+      icon: FileText, 
+      badge: '5' 
     });
   }
 
+  // For other roles with approval access (Sales Rep: submitted tracking; Finance: second-level approvals)
+  if (normalizedRole !== 'SALES_MANAGER' && perms.canAccessApprovals) {
+    items.push({
+      id: 'approvals',
+      label: normalizedRole === 'SALES_REP' ? 'My Submitted Approvals' : 'Approvals Center',
+      icon: CheckCircle2,
+      alertBadge: pendingApprovalsCount > 0 ? `${pendingApprovalsCount}` : undefined,
+      roleNote: normalizedRole === 'SALES_REP' ? 'Submitter View' : 'Level 2 Sign-Off'
+    });
+  }
+
+  // Sales Manager: Configures discount tiers and approval chains
+  if (normalizedRole === 'SALES_MANAGER' && perms.canAccessManagerGovernance) {
+    items.push({
+      id: 'manager-governance',
+      label: 'Discount Tiers & Approvals',
+      icon: Sliders,
+      highlighted: false,
+      roleNote: 'Governance Thresholds'
+    });
+  }
+
+  // Fulfillment: Sales Rep (tracking) and Finance/Operations (managing warehouse fulfillment splits and backorders)
   if (perms.canAccessFulfillment) {
     items.push({ 
       id: 'fulfillment', 
-      label: normalizedRole === 'SALES_REP' ? 'Fulfillment Tracking' : 'Fulfillment', 
+      label: normalizedRole === 'SALES_REP' ? 'Fulfillment Tracking' : 'Fulfillment & Allocation', 
       icon: Truck, 
       badge: '1',
-      roleNote: normalizedRole === 'SALES_REP' ? 'View-Only' : undefined
+      roleNote: normalizedRole === 'SALES_REP' ? 'View-Only' : 'Splits & Backorders'
     });
   }
 
+  // Billing: Finance & Operations reconciles recurring billing and credit notes
   if (perms.canAccessBilling) {
-    items.push({ id: 'billing', label: 'Billing & Hybrid', icon: CreditCard });
+    items.push({ 
+      id: 'billing', 
+      label: 'Billing & Subscriptions', 
+      icon: CreditCard,
+      roleNote: 'Reconciliation'
+    });
   }
 
+  // Deal Health: Monitored by Sales Rep and Sales Manager
   if (perms.canAccessHealth) {
     items.push({ 
       id: 'deal-health', 
@@ -306,19 +350,6 @@ export function getRoleNavItems(
     items.push({ id: 'reports', label: 'Reports & Analytics', icon: BarChart3 });
   }
 
-  // Sales Manager limited governance area (Requirements Section 14)
-  if (normalizedRole === 'SALES_MANAGER' && perms.canAccessManagerGovernance) {
-    items.push({
-      id: 'manager-governance',
-      label: 'Governance Policies',
-      icon: Settings,
-      highlighted: false,
-      roleNote: 'Policy Limits'
-    });
-  }
-
-  // Hide 'Administration' for Sales Reps, Sales Managers, Finance Ops!
-  // Only show for ADMIN
   if (perms.canAccessAdmin) {
     items.push({ 
       id: 'admin', 

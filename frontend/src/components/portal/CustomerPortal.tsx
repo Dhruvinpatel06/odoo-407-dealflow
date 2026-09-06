@@ -13,8 +13,7 @@ import {
   ChevronDown,
   ChevronUp,
   AlertCircle,
-  LogOut,
-  ArrowLeft
+  LogOut
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { StatusBadge } from '../common/StatusBadge';
@@ -27,7 +26,6 @@ export const CustomerPortal: React.FC = () => {
     submitCustomerNegotiation,
     addLineComment,
     customerConfirmQuote,
-    setUserRole,
     setCurrentPage,
     showNotification
   } = useApp();
@@ -62,13 +60,12 @@ export const CustomerPortal: React.FC = () => {
           </p>
           <button
             onClick={() => {
-              setUserRole('SALES_REP');
-              setCurrentPage('dashboard');
+              setCurrentPage('login');
             }}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-slate-800 text-white text-xs font-semibold hover:bg-slate-900 transition cursor-pointer"
           >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Switch to Internal Sales View</span>
+            <LogOut className="w-4 h-4" />
+            <span>Sign Out</span>
           </button>
         </div>
       </div>
@@ -125,18 +122,6 @@ export const CustomerPortal: React.FC = () => {
                 )}
               </div>
             </div>
-
-            <button
-              onClick={() => {
-                setUserRole('SALES_REP');
-                setCurrentPage('dashboard');
-              }}
-              title="Return to Internal Employee View"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition cursor-pointer"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Back to Internal Console</span>
-            </button>
 
             <button
               onClick={() => {

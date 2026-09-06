@@ -1,4 +1,4 @@
-import { API_BASE_URL } from './api';
+import { apiClient, ApiError } from './apiClient';
 import { 
   LoginRequest, 
   LoginResponse, 
@@ -6,315 +6,107 @@ import {
   LogoutResponse, 
   AuthUserInfo,
   SignupRequest,
-  UserResponse
+  UserResponse,
+  MessageResponse,
+  ChangePasswordRequest
 } from '../types';
 
-export class AuthError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-    public details?: unknown
-  ) {
-    super(message);
-    this.name = 'AuthError';
-  }
-}
-
-// In-memory access token storage (short-lived, not persisted to localStorage/sessionStorage)
-let inMemoryAccessToken: string | null = null;
-
-const getBaseUrl = (): string => {
-  return (API_BASE_URL || 'http://localhost:8000/api/v1').replace(/\/+$/, '');
-};
+export { ApiError as AuthError } from './apiClient';
 
 export const authService = {
   getAccessToken(): string | null {
-    return inMemoryAccessToken;
+    return apiClient.token.get();
   },
 
   setAccessToken(token: string | null): void {
-    inMemoryAccessToken = token;
+    apiClient.token.set(token);
   },
 
   isAuthenticated(): boolean {
-    return Boolean(inMemoryAccessToken);
+    return Boolean(apiClient.token.get());
   },
 
   /**
    * Public user signup endpoint:
    * POST /api/v1/auth/signup
-   *
-   * Automatically creates a CUSTOMER account.
    */
   async signup(payload: SignupRequest): Promise<UserResponse> {
-    const url = `${getBaseUrl()}/auth/signup`;
-
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: payload.name.trim(),
-          email: payload.email.trim(),
-          password: payload.password,
-        }),
-      });
-    } catch (networkError) {
-      throw new AuthError(
-        0,
-        'Unable to connect to the authentication server. Please check your network connection or verify that the server is running.',
-        networkError
-      );
-    }
-
-    if (!response.ok) {
-      let errorMessage = 'Registration failed.';
-      let details: unknown = null;
-
-      try {
-        const errorData = await response.json();
-        details = errorData;
-        if (typeof errorData?.detail === 'string') {
-          errorMessage = errorData.detail;
-        } else if (Array.isArray(errorData?.detail)) {
-          errorMessage = errorData.detail.map((d: any) => d.msg || 'Validation error').join('; ');
-        } else if (typeof errorData?.message === 'string') {
-          errorMessage = errorData.message;
-        }
-      } catch {
-        // Non-JSON response
-      }
-
-      if (response.status === 400) {
-        throw new AuthError(400, errorMessage || 'Email already registered or invalid request.', details);
-      }
-
-      if (response.status === 422) {
-        throw new AuthError(422, errorMessage || 'Validation error. Please check your inputs.', details);
-      }
-
-      if (response.status >= 500) {
-        throw new AuthError(response.status, 'Registration service is temporarily unavailable. Please try again later.', details);
-      }
-
-      throw new AuthError(response.status, errorMessage, details);
-    }
-
-    return await response.json();
+    return apiClient.post<UserResponse>('/auth/signup', {
+      name: payload.name.trim(),
+      email: payload.email.trim().toLowerCase(),
+      password: payload.password,
+    }, { skipAuth: true });
   },
 
-
   /**
-   * Authenticate user credentials against FastAPI endpoint:
+   * Authenticate user credentials:
    * POST /api/v1/auth/login
-   *
-   * Sends { email, password } as JSON.
-   * Uses credentials: 'include' so backend can set the HttpOnly refresh token cookie.
    */
   async login(credentials: LoginRequest): Promise<LoginResponse> {
-    const url = `${getBaseUrl()}/auth/login`;
+    const data = await apiClient.post<LoginResponse>('/auth/login', {
+      email: credentials.email.trim().toLowerCase(),
+      password: credentials.password,
+    }, { skipAuth: true });
 
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          email: credentials.email.trim(),
-          password: credentials.password,
-        }),
-      });
-    } catch (networkError) {
-      throw new AuthError(
-        0,
-        'Unable to connect to the authentication server. Please check your network connection or verify that the server is running.',
-        networkError
-      );
+    if (data?.access_token) {
+      apiClient.token.set(data.access_token);
     }
-
-    if (!response.ok) {
-      let errorMessage = 'Authentication failed.';
-      let details: unknown = null;
-
-      try {
-        const errorData = await response.json();
-        details = errorData;
-        if (typeof errorData?.detail === 'string') {
-          errorMessage = errorData.detail;
-        } else if (typeof errorData?.message === 'string') {
-          errorMessage = errorData.message;
-        }
-      } catch {
-        // Fallback for non-JSON error bodies
-      }
-
-      // Map HTTP error codes to safe user-facing explanations
-      if (response.status === 401) {
-        throw new AuthError(401, 'Invalid email or password.', details);
-      }
-
-      if (response.status === 403) {
-        throw new AuthError(403, errorMessage || 'Account is inactive or access is restricted.', details);
-      }
-
-      if (response.status >= 500) {
-        throw new AuthError(response.status, 'Authentication service is temporarily unavailable. Please try again later.', details);
-      }
-
-      throw new AuthError(response.status, errorMessage, details);
-    }
-
-    const data: LoginResponse = await response.json();
-
-    if (data.access_token) {
-      inMemoryAccessToken = data.access_token;
-    }
-
     return data;
   },
 
   /**
-   * Refresh the short-lived access token:
+   * Refresh short-lived access token:
    * POST /api/v1/auth/refresh
-   *
-   * Relies solely on the browser-managed HttpOnly refresh token cookie.
    */
   async refresh(): Promise<RefreshResponse> {
-    const url = `${getBaseUrl()}/auth/refresh`;
-
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-      });
-    } catch (networkError) {
-      throw new AuthError(0, 'Unable to reach the authentication server for token refresh.', networkError);
-    }
-
-    if (!response.ok) {
-      inMemoryAccessToken = null;
-      throw new AuthError(response.status, 'Session expired or refresh token invalid.');
-    }
-
-    const data: RefreshResponse = await response.json();
-    if (data.access_token) {
-      inMemoryAccessToken = data.access_token;
+    const data = await apiClient.post<RefreshResponse>('/auth/refresh', {}, { skipAuth: true });
+    if (data?.access_token) {
+      apiClient.token.set(data.access_token);
     }
     return data;
   },
 
   /**
-   * Terminate the authentication session:
+   * Revoke current session:
    * POST /api/v1/auth/logout
-   *
-   * Instructs backend to invalidate session and clear the HttpOnly cookie.
    */
   async logout(): Promise<LogoutResponse> {
-    const url = `${getBaseUrl()}/auth/logout`;
-
     try {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (inMemoryAccessToken) {
-        headers['Authorization'] = `Bearer ${inMemoryAccessToken}`;
-      }
-
-      const response = await fetch(url, {
-        method: 'POST',
-        headers,
-        credentials: 'include',
-      });
-
-      if (response.ok) {
-        try {
-          return await response.json();
-        } catch {
-          return { success: true };
-        }
-      }
-      return { success: false };
+      const res = await apiClient.post<MessageResponse>('/auth/logout');
+      return { success: true, message: res.message };
     } catch {
       return { success: false };
     } finally {
-      inMemoryAccessToken = null;
+      apiClient.token.clear();
     }
   },
 
   /**
-   * Fetch currently authenticated user identity:
+   * Fetch currently authenticated user:
    * GET /api/v1/auth/me
    */
   async getMe(): Promise<AuthUserInfo | null> {
-    if (!inMemoryAccessToken) {
-      return null;
-    }
-
-    const url = `${getBaseUrl()}/auth/me`;
     try {
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${inMemoryAccessToken}`,
-        },
-        credentials: 'include',
-      });
-
-      if (!response.ok) {
-        return null;
+      return await apiClient.get<AuthUserInfo>('/auth/me');
+    } catch (err: unknown) {
+      if (err instanceof ApiError && err.status === 401) {
+        apiClient.token.clear();
       }
-
-      return await response.json();
-    } catch {
       return null;
     }
   },
 
   /**
-   * Change current user's password:
+   * Change current authenticated user's password:
    * POST /api/v1/auth/change-password
    */
-  async changePassword(currentPassword: string, newPassword: string): Promise<LogoutResponse> {
-    const url = `${getBaseUrl()}/auth/change-password`;
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(inMemoryAccessToken ? { 'Authorization': `Bearer ${inMemoryAccessToken}` } : {}),
-      },
-      credentials: 'include',
-      body: JSON.stringify({
-        current_password: currentPassword,
-        new_password: newPassword,
-      }),
-    });
-
-    if (!response.ok) {
-      let errDetail = 'Failed to change password.';
-      try {
-        const d = await response.json();
-        if (d.detail) errDetail = d.detail;
-      } catch {
-        // ignore
-      }
-      throw new AuthError(response.status, errDetail);
-    }
-
-    inMemoryAccessToken = null;
-    return await response.json();
+  async changePassword(currentPassword: string, newPassword: string): Promise<MessageResponse> {
+    const payload: ChangePasswordRequest = {
+      current_password: currentPassword,
+      new_password: newPassword,
+    };
+    const res = await apiClient.post<MessageResponse>('/auth/change-password', payload);
+    apiClient.token.clear();
+    return res;
   },
 };
-
-

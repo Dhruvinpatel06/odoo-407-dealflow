@@ -325,3 +325,225 @@ export interface AdminCreateUserRequest {
   is_active?: boolean;
 }
 
+export interface MessageResponse {
+  message: string;
+}
+
+export interface ChangePasswordRequest {
+  current_password: string;
+  new_password: string;
+}
+
+export interface AdminChangePasswordRequest {
+  new_password: string;
+}
+
+// Backend Customer Contracts (Matches /api/v1/customers schemas)
+export interface CustomerResponse {
+  id: string;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  customer_tier_id: string;
+  billing_address?: string | null;
+  shipping_address?: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CustomerDetailResponse extends CustomerResponse {
+  customer_tier?: CustomerTierResponse | null;
+}
+
+export interface CustomerCreateRequest {
+  name: string;
+  customer_tier_id: string;
+  email?: string | null;
+  phone?: string | null;
+  billing_address?: string | null;
+  shipping_address?: string | null;
+  is_active?: boolean;
+}
+
+export interface CustomerUpdateRequest {
+  name?: string | null;
+  customer_tier_id?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  billing_address?: string | null;
+  shipping_address?: string | null;
+  is_active?: boolean | null;
+}
+
+// Backend Customer Tier Contracts (Matches /api/v1/customer-tiers schemas)
+export interface CustomerTierResponse {
+  id: string;
+  name: string;
+  description?: string | null;
+  default_discount_limit: string | number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CustomerTierCreateRequest {
+  name: string;
+  default_discount_limit: number | string;
+  description?: string | null;
+  is_active?: boolean;
+}
+
+export interface CustomerTierUpdateRequest {
+  name?: string | null;
+  default_discount_limit?: number | string | null;
+  description?: string | null;
+  is_active?: boolean | null;
+}
+
+// Backend Customer History Summaries
+export interface BackendQuotationSummary {
+  id: string;
+  quotation_number: string;
+  customer_id: string;
+  sales_rep_id: string;
+  status: string;
+  subtotal: string | number;
+  discount_amount: string | number;
+  order_discount_percent: string | number;
+  tax_amount: string | number;
+  total_amount: string | number;
+  total_cost: string | number;
+  margin_amount: string | number;
+  margin_percent: string | number;
+  risk_score: string | number;
+  approval_required: boolean;
+  last_activity_at: string;
+  valid_until?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BackendOrderSummary {
+  id: string;
+  order_number: string;
+  customer_id: string;
+  quotation_id: string;
+  status: string;
+  total_amount: string | number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BackendSubscriptionSummary {
+  id: string;
+  order_id: string;
+  quotation_line_id: string;
+  customer_id: string;
+  product_id: string;
+  plan_id: string;
+  quantity: string | number;
+  unit_price: string | number;
+  start_date: string;
+  next_billing_date: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// Product Category Contracts (Matches /api/v1/product-categories contract)
+export interface CategoryResponse {
+  id: string;
+  name: string;
+  code?: string;
+  description?: string | null;
+  max_discount_ceiling?: number;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface CategoryCreateRequest {
+  name: string;
+  code?: string;
+  description?: string | null;
+  max_discount_ceiling?: number;
+  is_active?: boolean;
+}
+
+export interface CategoryUpdateRequest {
+  name?: string;
+  code?: string;
+  description?: string | null;
+  max_discount_ceiling?: number;
+  is_active?: boolean;
+}
+
+// Product & Variant Contracts (Matches /api/v1/products and /api/v1/variants contracts)
+export interface ProductItemResponse {
+  id: string;
+  name: string;
+  sku: string;
+  category_id?: string;
+  category?: ProductCategory | string;
+  unit_price: number | string;
+  unit_cost: number | string;
+  tax_rate?: number | string;
+  is_subscription_eligible?: boolean;
+  description?: string | null;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ProductCreateRequest {
+  name: string;
+  sku: string;
+  category_id?: string;
+  unit_price: number;
+  unit_cost: number;
+  description?: string;
+  is_subscription_eligible?: boolean;
+  is_active?: boolean;
+}
+
+export interface ProductUpdateRequest {
+  name?: string;
+  sku?: string;
+  category_id?: string;
+  unit_price?: number;
+  unit_cost?: number;
+  description?: string;
+  is_subscription_eligible?: boolean;
+  is_active?: boolean;
+}
+
+export interface VariantResponse {
+  id: string;
+  product_id: string;
+  name: string;
+  sku: string;
+  price_adjustment?: number | string;
+  cost_adjustment?: number | string;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface VariantCreateRequest {
+  name: string;
+  sku: string;
+  price_adjustment?: number;
+  cost_adjustment?: number;
+  is_active?: boolean;
+}
+
+export interface VariantUpdateRequest {
+  name?: string;
+  sku?: string;
+  price_adjustment?: number;
+  cost_adjustment?: number;
+  is_active?: boolean;
+}
+
+

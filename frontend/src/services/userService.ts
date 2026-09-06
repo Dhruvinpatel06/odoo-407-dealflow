@@ -1,82 +1,93 @@
-import { API_BASE_URL } from './api';
-import { authService, AuthError } from './authService';
-import { AdminCreateUserRequest, UserResponse } from '../types';
+import { apiClient, ApiError } from './apiClient';
+import { 
+  AdminCreateUserRequest, 
+  UserResponse, 
+  MessageResponse, 
+  AdminChangePasswordRequest,
+  UserRole
+} from '../types';
 
-const getBaseUrl = (): string => {
-  return (API_BASE_URL || 'http://localhost:8000/api/v1').replace(/\/+$/, '');
-};
+export { ApiError as UserAdminError } from './apiClient';
 
-export class UserAdminError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-    public details?: unknown
-  ) {
-    super(message);
-    this.name = 'UserAdminError';
-  }
+export interface ListUsersParams {
+  role?: UserRole | string;
+  is_active?: boolean;
+  skip?: number;
+  limit?: number;
 }
 
 export const userService = {
   /**
-   * Fetch all users from administrative endpoint:
+   * List application users:
    * GET /api/v1/users
-   * Requires Admin Bearer token.
+   * Accessible to ADMIN and SALES_MANAGER.
    */
-  async getUsers(token?: string | null): Promise<UserResponse[]> {
-    const activeToken = token || authService.getAccessToken();
-    const url = `${getBaseUrl()}/users`;
+  async getUsers(params?: ListUsersParams): Promise<UserResponse[]> {
+    const query = new URLSearchParams();
+    if (params?.role) query.append('role', params.role);
+    if (params?.is_active !== undefined) query.append('is_active', String(params.is_active));
+    if (params?.skip !== undefined) query.append('skip', String(params.skip));
+    if (params?.limit !== undefined) query.append('limit', String(params.limit));
 
-    let response: Response;
+    const qs = query.toString();
+    const endpoint = `/users${qs ? `?${qs}` : ''}`;
+    return apiClient.get<UserResponse[]>(endpoint);
+  },
+
+  /**
+   * Get single user details:
+   * GET /api/v1/users/{id}
+   * With fallback to user list if direct item route is unmapped.
+   */
+  async getUser(id: string): Promise<UserResponse> {
     try {
-      response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {}),
-        },
-        credentials: 'include',
-      });
-    } catch (networkError) {
-      throw new UserAdminError(0, 'Unable to connect to the backend server.', networkError);
+      return await apiClient.get<UserResponse>(`/users/${id}`);
+    } catch (err: unknown) {
+      if (err instanceof ApiError && (err.status === 404 || err.status === 405)) {
+        const users = await this.getUsers();
+        const found = users.find(u => u.id === id);
+        if (found) return found;
+      }
+      throw err;
     }
+  },
 
-    if (!response.ok) {
-      let errorMessage = 'Failed to fetch users.';
-      try {
-        const errorData = await response.json();
-        if (typeof errorData?.detail === 'string') {
-          errorMessage = errorData.detail;
-        }
-      } catch {
-        // non-json
-      }
+  /**
+   * Update application user:
+   * PATCH /api/v1/users/{id}
+   */
+  async updateUser(id: string, payload: Partial<UserResponse>): Promise<UserResponse> {
+    return apiClient.patch<UserResponse>(`/users/${id}`, payload);
+  },
 
-      if (response.status === 401) {
-        throw new UserAdminError(401, 'Authentication required to view users.');
+  /**
+   * List authorized deal approvers:
+   * GET /api/v1/users/approvers
+   * Fallback: filter list_users by SALES_MANAGER and FINANCE_OPERATIONS.
+   */
+  async getApprovers(): Promise<UserResponse[]> {
+    try {
+      return await apiClient.get<UserResponse[]>('/users/approvers');
+    } catch (err: unknown) {
+      if (err instanceof ApiError && (err.status === 404 || err.status === 405)) {
+        const allUsers = await this.getUsers({ is_active: true });
+        return allUsers.filter(
+          u => u.role === 'SALES_MANAGER' || u.role === 'FINANCE_OPERATIONS' || u.role === 'ADMIN'
+        );
       }
-      if (response.status === 403) {
-        throw new UserAdminError(403, 'Administrator permissions required to view users.');
-      }
-      throw new UserAdminError(response.status, errorMessage);
+      throw err;
     }
-
-    return await response.json();
   },
 
   /**
    * Admin create user endpoint:
    * POST /api/v1/users
-   * Requires Admin Bearer token.
-   * Sends name, email, password, role, is_active, and optional customer_id (omitted if empty).
+   * Requires Admin authorization.
    */
-  async createUser(payload: AdminCreateUserRequest, token?: string | null): Promise<UserResponse> {
-    const activeToken = token || authService.getAccessToken();
-    const url = `${getBaseUrl()}/users`;
-
+  async createUser(payload: AdminCreateUserRequest): Promise<UserResponse> {
     const requestBody: Record<string, any> = {
       name: payload.name.trim(),
-      email: payload.email.trim(),
+      email: payload.email.trim().toLowerCase(),
       password: payload.password,
       role: payload.role,
       is_active: payload.is_active ?? true,
@@ -86,59 +97,17 @@ export const userService = {
       requestBody.customer_id = payload.customer_id.trim();
     }
 
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(activeToken ? { Authorization: `Bearer ${activeToken}` } : {}),
-        },
-        credentials: 'include',
-        body: JSON.stringify(requestBody),
-      });
-    } catch (networkError) {
-      throw new UserAdminError(
-        0,
-        'Unable to connect to the server. Please check your network connection or verify that the server is running.',
-        networkError
-      );
-    }
+    return apiClient.post<UserResponse>('/users', requestBody);
+  },
 
-    if (!response.ok) {
-      let errorMessage = 'Failed to create user.';
-      let details: unknown = null;
-
-      try {
-        const errorData = await response.json();
-        details = errorData;
-        if (typeof errorData?.detail === 'string') {
-          errorMessage = errorData.detail;
-        } else if (Array.isArray(errorData?.detail)) {
-          errorMessage = errorData.detail.map((d: any) => d.msg || 'Validation error').join('; ');
-        } else if (typeof errorData?.message === 'string') {
-          errorMessage = errorData.message;
-        }
-      } catch {
-        // non-json
-      }
-
-      if (response.status === 400) {
-        throw new UserAdminError(400, errorMessage || 'Email already registered or invalid input.', details);
-      }
-      if (response.status === 401) {
-        throw new UserAdminError(401, 'Authentication session expired or invalid. Please sign in again.', details);
-      }
-      if (response.status === 403) {
-        throw new UserAdminError(403, 'Permission denied. Platform Administrator privileges required.', details);
-      }
-      if (response.status === 422) {
-        throw new UserAdminError(422, errorMessage || 'Validation error. Please verify the form inputs.', details);
-      }
-
-      throw new UserAdminError(response.status, errorMessage, details);
-    }
-
-    return await response.json();
+  /**
+   * Admin reset user password:
+   * POST /api/v1/users/{user_id}/change-password
+   */
+  async adminChangePassword(userId: string, newPassword: string): Promise<MessageResponse> {
+    const payload: AdminChangePasswordRequest = {
+      new_password: newPassword,
+    };
+    return apiClient.post<MessageResponse>(`/users/${userId}/change-password`, payload);
   },
 };

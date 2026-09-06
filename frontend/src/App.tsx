@@ -25,6 +25,26 @@ const AppContent: React.FC = () => {
 
   // The Customer Portal has a dedicated, customer-branded layout without internal sidebars
   if (currentPage === 'portal' || currentPage === 'customer-portal') {
+    const normalizedRole = (currentUser.role ? String(currentUser.role).toUpperCase() : '') as UserRole;
+    const perms = ROLE_PERMISSIONS[normalizedRole] || ROLE_PERMISSIONS.SALES_REP;
+
+    // Requirement 3: Customer Portal must be accessible ONLY when logged in as Customer / Portal User
+    if (!perms.isExternalCustomer) {
+      return (
+        <div className="flex h-screen bg-[#F9FAFB] font-sans text-[#111827] overflow-hidden">
+          <Sidebar />
+          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+            <main className="flex-1 overflow-y-auto bg-[#F9FAFB]">
+              <AccessRestrictedView 
+                requiredRole="Customer / External Portal User (David Kross)" 
+                featureName="Customer Collaboration Portal" 
+              />
+            </main>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="min-h-screen bg-[#F9FAFB] font-sans text-[#111827]">
         <CustomerPortal />
@@ -73,10 +93,25 @@ const AppContent: React.FC = () => {
 
   // Standard Internal Enterprise Layout
   const renderCurrentPage = () => {
+    const normalizedRole = (currentUser.role ? String(currentUser.role).toUpperCase() : '') as UserRole;
+    const perms = ROLE_PERMISSIONS[normalizedRole] || ROLE_PERMISSIONS.SALES_REP;
+
+    // Requirement 2: A Customer user must remain inside the customer portal
+    if (perms.isExternalCustomer) {
+      return (
+        <AccessRestrictedView 
+          requiredRole="Internal Employee Console" 
+          featureName="Internal Enterprise Workspace" 
+        />
+      );
+    }
+
     const adminPages = [
       'admin',
       'admin-config',
       'discount-ceilings',
+      'customers-accounts',
+      'customer-tiers',
       'catalog-pricelists',
       'warehouses-stock',
       'subscriptions-billing',
@@ -85,7 +120,7 @@ const AppContent: React.FC = () => {
     ];
 
     // RBAC: If a non-admin attempts to view any Admin governance page, display access restriction
-    if (adminPages.includes(currentPage) && (currentUser.role || '').toUpperCase() !== 'ADMIN') {
+    if (adminPages.includes(currentPage) && normalizedRole !== 'ADMIN') {
       return (
         <AccessRestrictedView 
           requiredRole="Platform Administrator (Alex Mercer)" 
@@ -94,9 +129,27 @@ const AppContent: React.FC = () => {
       );
     }
 
-    const normalizedRole = (currentUser.role ? String(currentUser.role).toUpperCase() : '') as UserRole;
-    const perms = ROLE_PERMISSIONS[normalizedRole] || ROLE_PERMISSIONS.SALES_REP;
+    // Quotation Builder / Deals Pipeline: Sales Rep and Sales Manager (Admin via admin config)
+    if ((currentPage === 'quotations' || currentPage === 'quote-builder' || currentPage === 'pipeline') && !perms.canCreateQuotations && normalizedRole !== 'ADMIN') {
+      return (
+        <AccessRestrictedView 
+          requiredRole="Sales Representative or Sales Manager" 
+          featureName="Quotation Management & DealFlow Intelligence" 
+        />
+      );
+    }
 
+    // Fulfillment: Sales Rep (tracking) and Finance/Ops (managing fulfillment splits & backorders)
+    if (currentPage === 'fulfillment' && !perms.canAccessFulfillment) {
+      return (
+        <AccessRestrictedView 
+          requiredRole="Finance & RevOps or Sales Representative" 
+          featureName="Multi-Warehouse Fulfillment & Allocation" 
+        />
+      );
+    }
+
+    // Billing: Finance & RevOps and Administrator
     if (currentPage === 'billing' && !perms.canAccessBilling) {
       return (
         <AccessRestrictedView 
@@ -106,19 +159,31 @@ const AppContent: React.FC = () => {
       );
     }
 
+    // Deal Health: Sales Rep, Sales Manager, and Administrator
+    if (currentPage === 'deal-health' && !perms.canAccessHealth) {
+      return (
+        <AccessRestrictedView 
+          requiredRole="Sales Representative, Sales Manager, or Administrator" 
+          featureName="Deal Health & Anomaly Monitoring" 
+        />
+      );
+    }
+
+    // Reports: Platform Administrator
     if (currentPage === 'reports' && !perms.canAccessReports) {
       return (
         <AccessRestrictedView 
-          requiredRole="Finance & RevOps or Platform Administrator" 
+          requiredRole="Platform Administrator (Alex Mercer)" 
           featureName="Executive Reporting & Operations Analytics" 
         />
       );
     }
 
+    // Manager Governance: Sales Manager and Administrator
     if (currentPage === 'manager-governance' && !perms.canAccessManagerGovernance) {
       return (
         <AccessRestrictedView 
-          requiredRole="Platform Administrator (Alex Mercer)" 
+          requiredRole="Sales Manager (Marcus Vance) or Administrator" 
           featureName="Sales Operations Governance & Thresholds" 
         />
       );
@@ -148,6 +213,8 @@ const AppContent: React.FC = () => {
       case 'admin':
       case 'admin-config':
       case 'discount-ceilings':
+      case 'customers-accounts':
+      case 'customer-tiers':
       case 'catalog-pricelists':
       case 'warehouses-stock':
       case 'subscriptions-billing':

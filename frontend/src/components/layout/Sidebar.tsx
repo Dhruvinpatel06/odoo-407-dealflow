@@ -2,7 +2,6 @@ import React from 'react';
 import { 
   CheckCircle2, 
   ChevronRight,
-  ExternalLink,
   Sparkles
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
@@ -131,31 +130,6 @@ export const Sidebar: React.FC = () => {
             </button>
           );
         })}
-
-        {/* Customer Portal Link */}
-        <div className="pt-4 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
-          External Experience
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            setUserRole('CUSTOMER_PORTAL');
-            setCurrentPage('portal');
-          }}
-          className={`w-full flex items-center justify-between px-3 py-2 rounded-md text-xs font-medium transition cursor-pointer border ${
-            currentPage === 'portal'
-              ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
-              : 'text-gray-600 border-gray-200 hover:bg-gray-50 hover:text-gray-900'
-          }`}
-        >
-          <div className="flex items-center gap-3">
-            <ExternalLink className="w-4 h-4 text-emerald-600" />
-            <span className="font-semibold text-emerald-700">Customer Portal</span>
-          </div>
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 border border-emerald-200 font-mono">
-            Client
-          </span>
-        </button>
       </nav>
 
       {/* Authenticated Current User Card with Sign Out */}

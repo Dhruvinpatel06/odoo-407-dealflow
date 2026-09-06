@@ -19,18 +19,25 @@ import {
   AlertCircle,
   CheckCircle2,
   X,
-  Loader2
+  Loader2,
+  Building2,
+  KeyRound
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { AccessRestrictedView } from '../common/AccessRestrictedView';
 import { mockProducts, mockWarehouses } from '../../mockData';
 import { userService, UserAdminError } from '../../services/api';
 import { UserResponse, AdminCreateUserRequest } from '../../types';
+import { CustomerManagementPanel } from './CustomerManagementPanel';
+import { CustomerTierManagementPanel } from './CustomerTierManagementPanel';
+import { useProductsQuery } from '../../hooks/useBackendData';
 
-type AdminTab = 'DISCOUNTS' | 'CATALOG' | 'WAREHOUSES' | 'SUBSCRIPTIONS' | 'RISK' | 'USERS';
+type AdminTab = 'DISCOUNTS' | 'CUSTOMERS' | 'CUSTOMER_TIERS' | 'CATALOG' | 'WAREHOUSES' | 'SUBSCRIPTIONS' | 'RISK' | 'USERS';
 
 const PAGE_TO_TAB: Record<string, AdminTab> = {
   'discount-ceilings': 'DISCOUNTS',
+  'customers-accounts': 'CUSTOMERS',
+  'customer-tiers': 'CUSTOMER_TIERS',
   'catalog-pricelists': 'CATALOG',
   'warehouses-stock': 'WAREHOUSES',
   'subscriptions-billing': 'SUBSCRIPTIONS',
@@ -42,6 +49,8 @@ const PAGE_TO_TAB: Record<string, AdminTab> = {
 
 const TAB_TO_PAGE: Record<AdminTab, string> = {
   'DISCOUNTS': 'discount-ceilings',
+  'CUSTOMERS': 'customers-accounts',
+  'CUSTOMER_TIERS': 'customer-tiers',
   'CATALOG': 'catalog-pricelists',
   'WAREHOUSES': 'warehouses-stock',
   'SUBSCRIPTIONS': 'subscriptions-billing',
@@ -54,6 +63,16 @@ const TAB_INFO: Record<AdminTab, { title: string; subtitle: string; tag: string 
     title: 'Discount Ceilings & Tiers',
     subtitle: 'Authoritative discount ceilings by sales role, customer tier, and product category (BR-01, BR-02).',
     tag: 'Policy Governance'
+  },
+  CUSTOMERS: {
+    title: 'Customer Accounts & Portals',
+    subtitle: 'Authoritative commercial customer profiles, payment terms, tiers, and commercial history.',
+    tag: 'Customer Directory'
+  },
+  CUSTOMER_TIERS: {
+    title: 'Customer Tier Governance & Ceilings',
+    subtitle: 'Discount ceilings, min spend eligibility, and commercial privilege matrix.',
+    tag: 'Tier Governance'
   },
   CATALOG: {
     title: 'Catalog & Price Lists',
@@ -127,11 +146,48 @@ export const AdminConfigView: React.FC = () => {
   const [isCreatingUser, setIsCreatingUser] = useState<boolean>(false);
   const [addUserFormError, setAddUserFormError] = useState<string | null>(null);
 
+  // Admin Reset Password State
+  const [resetUser, setResetUser] = useState<UserResponse | null>(null);
+  const [resetPasswordValue, setResetPasswordValue] = useState<string>('');
+  const [isResettingPassword, setIsResettingPassword] = useState<boolean>(false);
+  const [resetPasswordError, setResetPasswordError] = useState<string | null>(null);
+  const [showResetPassword, setShowResetPassword] = useState<boolean>(false);
+
+  // Catalog queries from backend (with graceful fallback)
+  const { data: backendProducts, isLoading: isCatalogLoading } = useProductsQuery();
+
+  const handleAdminResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetUser || isResettingPassword) return;
+    if (!resetPasswordValue || resetPasswordValue.length < 8) {
+      setResetPasswordError('Password must be at least 8 characters in length.');
+      return;
+    }
+    setIsResettingPassword(true);
+    setResetPasswordError(null);
+    try {
+      await userService.adminChangePassword(resetUser.id, resetPasswordValue);
+      showNotification(`Password for "${resetUser.name}" reset successfully.`, 'success');
+      setResetUser(null);
+      setResetPasswordValue('');
+    } catch (err: unknown) {
+      if (err instanceof UserAdminError) {
+        setResetPasswordError(err.message);
+      } else if (err instanceof Error) {
+        setResetPasswordError(err.message);
+      } else {
+        setResetPasswordError('Failed to reset user password.');
+      }
+    } finally {
+      setIsResettingPassword(false);
+    }
+  };
+
   const fetchUsers = useCallback(async () => {
     setIsUsersLoading(true);
     setUsersError(null);
     try {
-      const data = await userService.getUsers(accessToken);
+      const data = await userService.getUsers();
       setUsersList(data);
     } catch (err: unknown) {
       if (err instanceof UserAdminError) {
@@ -142,7 +198,7 @@ export const AdminConfigView: React.FC = () => {
     } finally {
       setIsUsersLoading(false);
     }
-  }, [accessToken]);
+  }, []);
 
   useEffect(() => {
     if (activeTab === 'USERS') {
@@ -192,7 +248,7 @@ export const AdminConfigView: React.FC = () => {
         payload.customer_id = newUserCustomerId.trim();
       }
 
-      await userService.createUser(payload, accessToken);
+      await userService.createUser(payload);
 
       // 201 -> close/reset form, show success feedback, and refresh Users list
       showNotification(`User "${newUserName.trim()}" created successfully.`, 'success');
@@ -289,7 +345,7 @@ export const AdminConfigView: React.FC = () => {
           </p>
         </div>
 
-        {activeTab !== 'USERS' && (
+        {activeTab !== 'USERS' && activeTab !== 'CUSTOMERS' && activeTab !== 'CUSTOMER_TIERS' && (
           <button
             onClick={handleSavePolicy}
             className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-xs transition cursor-pointer"
@@ -313,13 +369,33 @@ export const AdminConfigView: React.FC = () => {
         </button>
 
         <button
+          onClick={() => handleTabClick('CUSTOMERS')}
+          className={`pb-3 px-3 text-xs font-bold border-b-2 transition flex items-center gap-2 cursor-pointer shrink-0 ${
+            activeTab === 'CUSTOMERS' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <Building2 className="w-3.5 h-3.5" />
+          <span>2. Customers & Accounts</span>
+        </button>
+
+        <button
+          onClick={() => handleTabClick('CUSTOMER_TIERS')}
+          className={`pb-3 px-3 text-xs font-bold border-b-2 transition flex items-center gap-2 cursor-pointer shrink-0 ${
+            activeTab === 'CUSTOMER_TIERS' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <ShieldCheck className="w-3.5 h-3.5" />
+          <span>3. Customer Tiers</span>
+        </button>
+
+        <button
           onClick={() => handleTabClick('CATALOG')}
           className={`pb-3 px-3 text-xs font-bold border-b-2 transition flex items-center gap-2 cursor-pointer shrink-0 ${
             activeTab === 'CATALOG' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
           }`}
         >
           <Package className="w-3.5 h-3.5" />
-          <span>2. Catalog & Price Lists</span>
+          <span>4. Catalog & Price Lists</span>
         </button>
 
         <button
@@ -329,7 +405,7 @@ export const AdminConfigView: React.FC = () => {
           }`}
         >
           <WarehouseIcon className="w-3.5 h-3.5" />
-          <span>3. Warehouses & Stock</span>
+          <span>5. Warehouses & Stock</span>
         </button>
 
         <button
@@ -339,7 +415,7 @@ export const AdminConfigView: React.FC = () => {
           }`}
         >
           <Repeat className="w-3.5 h-3.5" />
-          <span>4. Subscriptions & Billing</span>
+          <span>6. Subscriptions & Billing</span>
         </button>
 
         <button
@@ -349,7 +425,7 @@ export const AdminConfigView: React.FC = () => {
           }`}
         >
           <Sliders className="w-3.5 h-3.5" />
-          <span>5. Risk Scoring & Margin</span>
+          <span>7. Risk Scoring & Margin</span>
         </button>
 
         <button
@@ -359,9 +435,19 @@ export const AdminConfigView: React.FC = () => {
           }`}
         >
           <Users className="w-3.5 h-3.5" />
-          <span>6. Users & Access</span>
+          <span>8. Users & Access</span>
         </button>
       </div>
+
+      {/* Tab: Customers & Accounts */}
+      {activeTab === 'CUSTOMERS' && (
+        <CustomerManagementPanel />
+      )}
+
+      {/* Tab: Customer Tiers */}
+      {activeTab === 'CUSTOMER_TIERS' && (
+        <CustomerTierManagementPanel />
+      )}
 
 
       {/* Tab 1: Discount Ceilings */}
@@ -996,6 +1082,7 @@ export const AdminConfigView: React.FC = () => {
                       <th className="py-3 px-3">Status</th>
                       <th className="py-3 px-3">Customer Link</th>
                       <th className="py-3 px-3">Created</th>
+                      <th className="py-3 px-3 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -1034,6 +1121,20 @@ export const AdminConfigView: React.FC = () => {
                           <td className="py-3 px-3 text-[11px] text-slate-500 font-mono">
                             {u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}
                           </td>
+                          <td className="py-3 px-3 text-right">
+                            <button
+                              onClick={() => {
+                                setResetUser(u);
+                                setResetPasswordValue('');
+                                setResetPasswordError(null);
+                              }}
+                              className="px-2 py-1 text-[11px] font-semibold text-slate-600 hover:text-amber-700 hover:bg-amber-50 rounded border border-slate-200 transition cursor-pointer inline-flex items-center gap-1"
+                              title={`Reset password for ${u.name}`}
+                            >
+                              <KeyRound className="w-3 h-3 text-amber-600" />
+                              <span>Reset Password</span>
+                            </button>
+                          </td>
                         </tr>
                       );
                     })}
@@ -1042,6 +1143,93 @@ export const AdminConfigView: React.FC = () => {
               </div>
             )}
           </div>
+
+          {/* Admin Reset Password Modal */}
+          {resetUser && (
+            <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                  <div className="flex items-center gap-2">
+                    <KeyRound className="w-4 h-4 text-amber-600" />
+                    <h3 className="text-sm font-bold text-slate-900">Reset User Password</h3>
+                  </div>
+                  <button
+                    onClick={() => setResetUser(null)}
+                    className="text-slate-400 hover:text-slate-600 transition cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleAdminResetPassword} className="p-5 space-y-4">
+                  <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 text-xs">
+                    Setting authoritative backend password for <strong>{resetUser.name}</strong> ({resetUser.email}).
+                  </div>
+
+                  {resetPasswordError && (
+                    <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                      <span>{resetPasswordError}</span>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-800 mb-1.5">
+                      New Password <span className="text-rose-500">*</span> <span className="text-slate-400 font-normal">(min 8 characters)</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showResetPassword ? 'text' : 'password'}
+                        value={resetPasswordValue}
+                        onChange={(e) => {
+                          setResetPasswordValue(e.target.value);
+                          if (resetPasswordError) setResetPasswordError(null);
+                        }}
+                        disabled={isResettingPassword}
+                        placeholder="••••••••"
+                        className="w-full bg-white border border-slate-200 rounded-lg pl-3 pr-10 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-amber-500/20 focus:border-amber-600 transition disabled:bg-slate-50"
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowResetPassword(!showResetPassword)}
+                        disabled={isResettingPassword}
+                        className="absolute right-3 top-2 text-slate-400 hover:text-slate-600 transition cursor-pointer"
+                        title={showResetPassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showResetPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setResetUser(null)}
+                      disabled={isResettingPassword}
+                      className="px-3.5 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isResettingPassword}
+                      className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400 text-white text-xs font-semibold shadow-xs transition flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
+                    >
+                      {isResettingPassword ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Updating...</span>
+                        </>
+                      ) : (
+                        <span>Set New Password</span>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

@@ -19,7 +19,7 @@ import {
   GovernanceConfig,
   AuthUserInfo
 } from '../types';
-import { authService } from '../services/authService';
+import { authService, customerService, customerTierService } from '../services/api';
 import { 
   mockUsers, 
   mockCustomers,
@@ -138,6 +138,7 @@ interface AppContextType {
   // Governance Configuration
   updateGovernanceConfig: (newConfig: Partial<GovernanceConfig>) => void;
   resetDemoData: () => void;
+  refreshBackendCustomers: () => Promise<void>;
   
   // Notifications
   notification: { message: string; type: 'success' | 'warning' | 'info' | 'error' } | null;
@@ -196,7 +197,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
   
-  const [customers] = useState<Customer[]>(mockCustomers);
+  const [customers, setCustomers] = useState<Customer[]>(() => loadFromStorage('dealflow_customers', mockCustomers));
+  
+  const refreshBackendCustomers = async () => {
+    try {
+      const [backendCusts, backendTiers] = await Promise.all([
+        customerService.getCustomers({ limit: 100 }).catch(() => []),
+        customerTierService.getCustomerTiers({ limit: 100 }).catch(() => []),
+      ]);
+
+      if (backendCusts && backendCusts.length > 0) {
+        const tierNameMap = new Map<string, string>();
+        const tierCeilingMap = new Map<string, number>();
+        backendTiers.forEach(t => {
+          tierNameMap.set(t.id, t.name.toUpperCase());
+          const limitNum = typeof t.default_discount_limit === 'string'
+            ? parseFloat(t.default_discount_limit) || 15
+            : t.default_discount_limit;
+          tierCeilingMap.set(t.id, limitNum);
+        });
+
+        const mapped: Customer[] = backendCusts.map((c, idx) => ({
+          id: c.id,
+          name: c.name,
+          companyNumber: c.id.slice(0, 8).toUpperCase(),
+          tier: (tierNameMap.get(c.customer_tier_id) || 'GOLD') as any,
+          industry: idx % 2 === 0 ? 'Enterprise Cloud' : 'Financial Services',
+          contactName: c.name,
+          contactEmail: c.email || `${c.name.toLowerCase().replace(/\s+/g, '')}@enterprise.io`,
+          defaultDiscountCeiling: tierCeilingMap.get(c.customer_tier_id) || 15,
+          balance: 0,
+        }));
+        setCustomers(mapped);
+      }
+    } catch {
+      // Keep existing customers if network unavailable
+    }
+  };
+
+  useEffect(() => {
+    refreshBackendCustomers();
+  }, [isAuthenticated]);
+
   const [products] = useState<Product[]>(mockProducts);
   const [quotations, setQuotations] = useState<Quotation[]>(() => loadFromStorage('dealflow_quotations', mockQuotations));
   const [approvals, setApprovals] = useState<ApprovalInstance[]>(() => loadFromStorage('dealflow_approvals', mockApprovals));
@@ -237,6 +279,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Sync to localStorage
   useEffect(() => { saveToStorage('dealflow_user', currentUser); }, [currentUser]);
   useEffect(() => { saveToStorage('dealflow_page', currentPage); }, [currentPage]);
+  useEffect(() => { saveToStorage('dealflow_customers', customers); }, [customers]);
   useEffect(() => { saveToStorage('dealflow_quote_id', selectedQuoteId); }, [selectedQuoteId]);
   useEffect(() => { saveToStorage('dealflow_quotations', quotations); }, [quotations]);
   useEffect(() => { saveToStorage('dealflow_approvals', approvals); }, [approvals]);
@@ -265,7 +308,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setCurrentPage('portal');
       showNotification(`Switched role to Customer Portal (${userMatch.name} - Acme Corp)`, 'info');
     } else {
-      const restrictedForManager = ['billing', 'reports', 'manager-governance'];
+      const restrictedForManager = ['billing', 'reports', 'fulfillment'];
       if (currentPage === 'portal' || (role === 'SALES_MANAGER' && restrictedForManager.includes(currentPage))) {
         setCurrentPage('dashboard');
       }
@@ -1631,6 +1674,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       triggerAlertNudge,
       updateGovernanceConfig,
       resetDemoData,
+      refreshBackendCustomers,
       notification,
       showNotification,
       isGuideOpen,

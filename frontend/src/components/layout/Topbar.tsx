@@ -6,9 +6,17 @@ import {
   HelpCircle, 
   CheckCircle2, 
   ArrowRight,
-  LogOut
+  LogOut,
+  KeyRound,
+  Eye,
+  EyeOff,
+  AlertCircle,
+  X,
+  Loader2
 } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useApp } from '../../context/AppContext';
+import { authService } from '../../services/api';
 
 export const Topbar: React.FC = () => {
   const { 
@@ -19,11 +27,23 @@ export const Topbar: React.FC = () => {
     dealAlerts, 
     showNotification,
     setIsGuideOpen,
-    resetDemoData 
+    resetDemoData,
+    accessToken,
+    refreshBackendCustomers
   } = useApp();
 
+  const queryClient = useQueryClient();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showNotificationMenu, setShowNotificationMenu] = useState(false);
+
+  // Change Password Modal State
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+  const [oldPassword, setOldPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [showOldPassword, setShowOldPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [changePasswordError, setChangePasswordError] = useState<string | null>(null);
 
   const getPageMeta = () => {
     switch (currentPage) {
@@ -55,13 +75,51 @@ export const Topbar: React.FC = () => {
 
   const { title, breadcrumb } = getPageMeta();
 
-  const handleReloadData = () => {
+  const handleReloadData = async () => {
     setIsRefreshing(true);
-    recalculateActiveQuote();
-    setTimeout(() => {
+    try {
+      await Promise.all([
+        queryClient.invalidateQueries(),
+        refreshBackendCustomers()
+      ]);
+      recalculateActiveQuote();
+      showNotification('Refreshed authoritative pricing, customer records, and governance rules from FastAPI.', 'success');
+    } catch {
+      recalculateActiveQuote();
+      showNotification('Refreshed local operational state.', 'info');
+    } finally {
       setIsRefreshing(false);
-      showNotification('Refreshed authoritative pricing, warehouse inventory, and approval rules from FastAPI.', 'success');
-    }, 600);
+    }
+  };
+
+  const handleChangePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isChangingPassword) return;
+
+    if (!oldPassword || !newPassword) {
+      setChangePasswordError('Both current password and new password are required.');
+      return;
+    }
+    if (newPassword.length < 8) {
+      setChangePasswordError('New password must be at least 8 characters in length.');
+      return;
+    }
+
+    setIsChangingPassword(true);
+    setChangePasswordError(null);
+
+    try {
+      await authService.changePassword(oldPassword, newPassword);
+      showNotification('Your password has been changed successfully.', 'success');
+      setIsChangePasswordOpen(false);
+      setOldPassword('');
+      setNewPassword('');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to change password.';
+      setChangePasswordError(msg);
+    } finally {
+      setIsChangingPassword(false);
+    }
   };
 
   const handleResetData = () => {
@@ -172,12 +230,27 @@ export const Topbar: React.FC = () => {
           )}
         </div>
 
-        {/* Current Persona Pill & Sign Out */}
+        {/* Current Persona Pill, Password & Sign Out */}
         <div className="hidden lg:flex items-center gap-2 pl-2 border-l border-gray-200">
           <span className="text-[11px] font-medium text-gray-400">Role:</span>
           <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-800 font-mono">
             {currentUser.role.replace('_', ' ')}
           </span>
+
+          <button
+            onClick={() => {
+              setIsChangePasswordOpen(true);
+              setOldPassword('');
+              setNewPassword('');
+              setChangePasswordError(null);
+            }}
+            title="Change My Password"
+            className="flex items-center gap-1 px-2 py-1 ml-1 rounded-md text-[11px] text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition cursor-pointer"
+          >
+            <KeyRound className="w-3.5 h-3.5" />
+            <span className="hidden xl:inline">Password</span>
+          </button>
+
           <button
             onClick={() => setCurrentPage('login')}
             title="Sign Out / Switch Persona"
@@ -188,6 +261,121 @@ export const Topbar: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Change Password Modal */}
+      {isChangePasswordOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-2">
+                <KeyRound className="w-4 h-4 text-blue-600" />
+                <h3 className="text-sm font-bold text-slate-900">Change Account Password</h3>
+              </div>
+              <button
+                onClick={() => setIsChangePasswordOpen(false)}
+                className="text-slate-400 hover:text-slate-600 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleChangePasswordSubmit} className="p-5 space-y-4">
+              <div className="text-xs text-slate-500">
+                Update your authoritative account credentials on the FastAPI authentication service.
+              </div>
+
+              {changePasswordError && (
+                <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <span>{changePasswordError}</span>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-800 mb-1.5">
+                  Current Password <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type={showOldPassword ? 'text' : 'password'}
+                    value={oldPassword}
+                    onChange={(e) => {
+                      setOldPassword(e.target.value);
+                      if (changePasswordError) setChangePasswordError(null);
+                    }}
+                    disabled={isChangingPassword}
+                    placeholder="••••••••"
+                    className="w-full bg-white border border-slate-200 rounded-lg pl-3 pr-10 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition disabled:bg-slate-50"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowOldPassword(!showOldPassword)}
+                    disabled={isChangingPassword}
+                    className="absolute right-3 top-2 text-slate-400 hover:text-slate-600 transition cursor-pointer"
+                    title={showOldPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showOldPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-800 mb-1.5">
+                  New Password <span className="text-rose-500">*</span> <span className="text-slate-400 font-normal">(min 8 chars)</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type={showNewPassword ? 'text' : 'password'}
+                    value={newPassword}
+                    onChange={(e) => {
+                      setNewPassword(e.target.value);
+                      if (changePasswordError) setChangePasswordError(null);
+                    }}
+                    disabled={isChangingPassword}
+                    placeholder="••••••••"
+                    className="w-full bg-white border border-slate-200 rounded-lg pl-3 pr-10 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition disabled:bg-slate-50"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    disabled={isChangingPassword}
+                    className="absolute right-3 top-2 text-slate-400 hover:text-slate-600 transition cursor-pointer"
+                    title={showNewPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsChangePasswordOpen(false)}
+                  disabled={isChangingPassword}
+                  className="px-3.5 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isChangingPassword}
+                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-xs font-semibold shadow-xs transition flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
+                >
+                  {isChangingPassword ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <span>Update Password</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </header>
   );
 };

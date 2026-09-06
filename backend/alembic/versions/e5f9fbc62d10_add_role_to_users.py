@@ -44,7 +44,7 @@ def upgrade() -> None:
     # 2. Add non-nullable role column to users table
     op.add_column(
         'users',
-        sa.Column('role', user_role_enum, nullable=False),
+        sa.Column('role', user_role_enum, nullable=False, server_default='SALES_REP'),
     )
 
 
